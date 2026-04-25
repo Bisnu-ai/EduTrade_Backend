@@ -1,47 +1,55 @@
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const Groq = require("groq-sdk");
 
 // POST /api/ai/chat
 const chatWithAI = async (req, res, next) => {
   try {
     const { message, history } = req.body;
 
-    if (!process.env.GEMINI_API_KEY) {
+    if (!process.env.GROQ_API_KEY) {
       return res.status(500).json({ 
         success: false, 
-        message: "AI Service not configured. Please add GEMINI_API_KEY to environment variables." 
+        message: "AI Service (Groq) not configured. Please add GROQ_API_KEY to environment variables." 
       });
     }
 
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-    const chat = model.startChat({
-      history: [
-        {
-          role: "user",
-          parts: [{ text: "You are EduBot, the helpful AI assistant for EduTrade, a campus marketplace for college students. Your goal is to help students buy, sell, and trade items safely. You should be friendly, concise, and professional. If users ask about technical issues, tell them to contact support. If they ask how to sell, explain that they need to click the 'Sell Item' button." }],
-        },
-        {
-          role: "model",
-          parts: [{ text: "Hello! I am EduBot, your EduTrade assistant. How can I help you today?" }],
-        },
-        ...(history || [])
-      ],
+    // Convert Gemini history format to OpenAI/Groq format if needed
+    const messages = [
+      {
+        role: "system",
+        content: "You are EduBot, the helpful AI assistant for EduTrade, a campus marketplace for college students. Your goal is to help students buy, sell, and trade items safely. Be friendly, concise, and professional. Mention that they are in the 'EduTrade' community. If they ask how to sell, tell them to click the 'Sell Item' button in the navbar."
+      },
+      ...((history || []).map(h => ({
+        role: h.role === "model" ? "assistant" : "user",
+        content: h.parts[0].text
+      }))),
+      {
+        role: "user",
+        content: message
+      }
+    ];
+
+    const chatCompletion = await groq.chat.completions.create({
+      messages: messages,
+      model: "llama3-8b-8192", // Fast and free-tier friendly
+      temperature: 0.7,
+      max_tokens: 1024,
+      top_p: 1,
+      stream: false,
     });
 
-    const result = await chat.sendMessage(message);
-    const response = await result.response;
-    const text = response.text();
+    const reply = chatCompletion.choices[0]?.message?.content || "I'm not sure how to respond to that.";
 
     res.json({
       success: true,
       data: {
-        reply: text
+        reply: reply
       }
     });
   } catch (error) {
-    console.error("AI Chat Error:", error.message);
-    res.status(500).json({ success: false, message: "AI Assistant is busy right now. Try again later." });
+    console.error("Groq AI Error:", error.message);
+    res.status(500).json({ success: false, message: "AI Assistant is busy. Please try again in a few seconds." });
   }
 };
 
