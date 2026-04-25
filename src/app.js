@@ -58,6 +58,7 @@ app.use("/api/products", require("./routes/productRoutes"));
 app.use("/api/chat", require("./routes/chatRoutes"));
 app.use("/api/notifications", require("./routes/notificationRoutes"));
 app.use("/api/admin", require("./routes/adminRoutes"));
+app.use("/api/ai", require("./routes/aiRoutes"));
 
 // Error handling
 app.use(notFound);
