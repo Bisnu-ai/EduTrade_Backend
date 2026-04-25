@@ -32,7 +32,7 @@ const chatWithAI = async (req, res, next) => {
 
     const chatCompletion = await groq.chat.completions.create({
       messages: messages,
-      model: "llama3-8b-8192", // Fast and free-tier friendly
+      model: "llama-3.3-70b-versatile", // Latest and most powerful
       temperature: 0.7,
       max_tokens: 1024,
       top_p: 1,
