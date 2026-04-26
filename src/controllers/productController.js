@@ -58,24 +58,33 @@ const getProducts = async (req, res, next) => {
     // Filters
     if (category) {
       const { CATEGORIES } = require("../models/Product");
-      if (!CATEGORIES.includes(category)) {
+      // Find the actual category name from the enum (case-insensitive and handle slugs)
+      const actualCategory = CATEGORIES.find(c => 
+        c.toLowerCase().replace(/\s+/g, "-") === category.toLowerCase().replace(/\s+/g, "-")
+      );
+
+      if (!actualCategory) {
         return res.status(400).json({
           success: false,
           message: `Invalid category. Valid categories: ${CATEGORIES.join(", ")}`,
         });
       }
-      query.category = category;
+      query.category = actualCategory;
     }
 
     if (condition) {
       const { CONDITIONS } = require("../models/Product");
-      if (!CONDITIONS.includes(condition)) {
+      const actualCondition = CONDITIONS.find(c => 
+        c.toLowerCase().replace(/\s+/g, "-") === condition.toLowerCase().replace(/\s+/g, "-")
+      );
+
+      if (!actualCondition) {
         return res.status(400).json({
           success: false,
           message: `Invalid condition. Valid conditions: ${CONDITIONS.join(", ")}`,
         });
       }
-      query.condition = condition;
+      query.condition = actualCondition;
     }
 
     if (minPrice !== undefined || maxPrice !== undefined) {
