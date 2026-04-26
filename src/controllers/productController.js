@@ -308,18 +308,49 @@ const getWishlist = async (req, res, next) => {
 
 const markAsSold = async (req, res, next) => {
   try {
-    const product = await Product.findById(req.params.id);
-    if (!product) return res.status(404).json({ success: false, message: "Product not found" });
-    if (product.seller.toString() !== req.user._id.toString()) return res.status(403).json({ success: false, message: "Unauthorized" });
+    const { id } = req.params;
+    const { soldTo } = req.body;
 
-    await Transaction.create({ productTitle: product.title, price: product.price, category: product.category, seller: product.seller, buyer: req.body.soldTo });
-    deleteAllProductImages(product.images);
+    if (!soldTo) {
+      return res.status(400).json({ success: false, message: "Buyer (soldTo) ID is required" });
+    }
+
+    const product = await Product.findById(id);
+    if (!product) {
+      return res.status(404).json({ success: false, message: "Product not found" });
+    }
+
+    if (product.seller.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: "Unauthorized" });
+    }
+
+    // 1. Create Transaction
+    await Transaction.create({
+      productTitle: product.title,
+      price: product.price,
+      category: product.category,
+      seller: product.seller,
+      buyer: soldTo
+    });
+
+    // 2. Cleanup
+    if (product.images && product.images.length > 0) {
+      deleteAllProductImages(product.images);
+    }
+
+    // 3. Update stats
     await User.findByIdAndUpdate(req.user._id, { $inc: { totalSold: 1 } });
-    await product.deleteOne();
-    cache.flush();
 
-    res.json({ success: true, message: "Product marked as sold" });
-  } catch (error) { next(error); }
+    // 4. Delete
+    await product.deleteOne();
+    
+    if (cache && typeof cache.flush === 'function') cache.flush();
+
+    res.json({ success: true, message: "Product marked as sold and receipt recorded" });
+  } catch (error) { 
+    console.error("MARK_AS_SOLD_ERROR:", error);
+    res.status(500).json({ success: false, message: "Failed to mark as sold" });
+  }
 };
 
 const getCategories = async (req, res) => {
