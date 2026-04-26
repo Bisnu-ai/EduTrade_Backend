@@ -95,14 +95,16 @@ After listing, give them the link to upload images.`;
     // Handle Tool Calls
     if (responseMessage.tool_calls) {
       const toolCall = responseMessage.tool_calls[0];
-      if (toolCall.function.name === "list_product") {
-        const args = JSON.parse(toolCall.function.arguments);
+        if (toolCall.function.name === "list_product") {
+        const rawArgs = JSON.parse(toolCall.function.arguments);
+        // Trim all string arguments to prevent broken links
+        const args = Object.fromEntries(
+          Object.entries(rawArgs).map(([key, value]) => [key, typeof value === 'string' ? value.trim() : value])
+        );
         
         if (!req.user) {
           reply = "I've collected all the details, but you need to log in first to list your item! Please sign in and let me know when you're ready.";
         } else {
-          // Instead of creating the product directly (as images are required), 
-          // we provide a link to the sell page with pre-filled details.
           const queryParams = new URLSearchParams({
             title: args.title,
             price: args.price,
@@ -112,14 +114,14 @@ After listing, give them the link to upload images.`;
             fromChat: "true"
           }).toString();
           
-          reply = `Great! I've prepared your listing for **${args.title}**. 
-          
+          reply = `Great! I've prepared your listing for **${args.title}**.
+
 Click here to add photos and publish: [Complete Your Listing](/sell?${queryParams})
 
-Details collected:
-- **Price**: ₹${args.price}
-- **Category**: ${args.category}
-- **Condition**: ${args.condition}`;
+**Details collected:**
+- **Price:** ₹${args.price}
+- **Category:** ${args.category}
+- **Condition:** ${args.condition}`;
         }
       }
     }
