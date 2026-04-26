@@ -20,6 +20,9 @@ const getStats = async (req, res, next) => {
       success: true,
       data: { totalUsers, totalProducts, totalChats, bannedUsers, activeProducts },
     });
+    
+    // One-time flush to sync Marketplace with DB
+    cache.flush();
   } catch (error) { next(error); }
 };
 
