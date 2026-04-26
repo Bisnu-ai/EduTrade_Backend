@@ -1,5 +1,6 @@
 const Product = require("../models/Product");
 const User = require("../models/User");
+const Chat = require("../models/Chat");
 const cache = require("../utils/cache");
 const Transaction = require("../models/Transaction");
 const { getFileUrl, deleteAllProductImages } = require("../middleware/upload");
