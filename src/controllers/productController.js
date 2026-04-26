@@ -1,33 +1,10 @@
 const Product = require("../models/Product");
 const User = require("../models/User");
-const Notification = require("../models/Notification");
-const Transaction = require("../models/Transaction");
-const { getFileUrl, deleteFile } = require("../middleware/upload");
-const { AppError } = require("../middleware/errorHandler");
 const cache = require("../utils/cache");
-const path = require("path");
-const fs = require("fs");
+const Transaction = require("../models/Transaction");
+const { getFileUrl, deleteAllProductImages } = require("../middleware/upload");
 
-// Helper to delete ALL product images from disk
-const deleteAllProductImages = (imageUrls) => {
-  if (!imageUrls || !Array.isArray(imageUrls)) return;
-  
-  imageUrls.forEach((imgUrl) => {
-    try {
-      const filename = path.basename(imgUrl);
-      const filepath = path.join(
-        process.cwd(),
-        process.env.UPLOAD_PATH || "uploads/",
-        filename
-      );
-      deleteFile(filepath);
-    } catch (error) {
-      console.error(`Failed to delete image: ${imgUrl}`, error);
-    }
-  });
-};
-
-// GET /api/products - List all products with filters, pagination, search
+// GET /api/products - Get all products with filters & pagination
 const getProducts = async (req, res, next) => {
   try {
     const {
@@ -43,99 +20,64 @@ const getProducts = async (req, res, next) => {
       limit = 20,
     } = req.query;
 
-    // Validate pagination
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(50, Math.max(1, parseInt(limit)));
     const skip = (pageNum - 1) * limitNum;
 
-    // Initialize query
-    const query = {};
-    query.isAvailable = true;
+    // ── Build Query ──────────────────────────────────────────────────────────
+    const query = { isAvailable: true };
 
-    // Text search (only if provided and not empty)
-    if (search && typeof search === 'string' && search.trim().length > 0) {
-      query.$text = { $search: search.trim() };
+    // Text Search
+    if (search && search.trim().length > 0) {
+      query.$or = [
+        { title: { $regex: search.trim(), $options: "i" } },
+        { description: { $regex: search.trim(), $options: "i" } }
+      ];
     }
 
-    // Filters
-    if (category && category !== "" && category !== "all") {
-      const { CATEGORIES } = require("../models/Product");
-      // Find the actual category name from the enum (case-insensitive and handle slugs)
-      const actualCategory = CATEGORIES.find(c => 
-        c.toLowerCase().replace(/\s+/g, "-") === category.toLowerCase().replace(/\s+/g, "-")
-      );
-
-      if (!actualCategory) {
-        return res.status(400).json({
-          success: false,
-          message: `Invalid category. Valid categories: ${CATEGORIES.join(", ")}`,
-        });
-      }
-      query.category = actualCategory;
+    // Category Filter (Case-insensitive & Slug-friendly)
+    if (category && category !== "" && category !== "all" && category !== "undefined") {
+      const categoryRegex = category.replace(/-/g, " ").trim();
+      query.category = { $regex: `^${categoryRegex}$`, $options: "i" };
     }
 
-    if (condition) {
-      const { CONDITIONS } = require("../models/Product");
-      const actualCondition = CONDITIONS.find(c => 
-        c.toLowerCase().replace(/\s+/g, "-") === condition.toLowerCase().replace(/\s+/g, "-")
-      );
-
-      if (!actualCondition) {
-        return res.status(400).json({
-          success: false,
-          message: `Invalid condition. Valid conditions: ${CONDITIONS.join(", ")}`,
-        });
-      }
-      query.condition = actualCondition;
+    // Condition Filter
+    if (condition && condition !== "" && condition !== "undefined") {
+      const conditionRegex = condition.replace(/-/g, " ").trim();
+      query.condition = { $regex: `^${conditionRegex}$`, $options: "i" };
     }
 
+    // Price Range
     if (minPrice !== undefined || maxPrice !== undefined) {
       query.price = {};
-      if (minPrice !== undefined) {
-        const min = parseFloat(minPrice);
-        if (isNaN(min) || min < 0) {
-          return res.status(400).json({ success: false, message: "Invalid minPrice" });
-        }
-        query.price.$gte = min;
-      }
-      if (maxPrice !== undefined) {
-        const max = parseFloat(maxPrice);
-        if (isNaN(max) || max < 0) {
-          return res.status(400).json({ success: false, message: "Invalid maxPrice" });
-        }
-        query.price.$lte = max;
-      }
-      if (query.price.$gte !== undefined && query.price.$lte !== undefined) {
-        if (query.price.$gte > query.price.$lte) {
-          return res.status(400).json({ success: false, message: "minPrice cannot exceed maxPrice" });
-        }
-      }
+      if (minPrice) query.price.$gte = parseFloat(minPrice);
+      if (maxPrice) query.price.$lte = parseFloat(maxPrice);
     }
 
+    // College & Seller
     if (college) query.college = { $regex: college, $options: "i" };
     if (seller) query.seller = seller;
 
-    // Sort options
+    // ── Sort & Cache ─────────────────────────────────────────────────────────
     const sortMap = {
       "-createdAt": { createdAt: -1 },
-      createdAt: { createdAt: 1 },
+      "createdAt": { createdAt: 1 },
       "-price": { price: -1 },
-      price: { price: 1 },
+      "price": { price: 1 },
       "-views": { views: -1 },
     };
-
     const sortQuery = sortMap[sort] || { createdAt: -1 };
 
+    // Skip cache if cache-buster is present
     const cacheKey = `products_list_${JSON.stringify(req.query)}`;
-    const cachedData = cache.get(cacheKey);
-    if (cachedData) {
-      return res.status(200).json({
-        success: true,
-        data: cachedData,
-        source: "cache"
-      });
+    if (!req.query._t) {
+      const cachedData = cache.get(cacheKey);
+      if (cachedData) {
+        return res.status(200).json({ success: true, data: cachedData, source: "cache" });
+      }
     }
 
+    // ── Execute Query ────────────────────────────────────────────────────────
     const [products, total] = await Promise.all([
       Product.find(query)
         .sort(sortQuery)
@@ -152,12 +94,10 @@ const getProducts = async (req, res, next) => {
         page: pageNum,
         limit: limitNum,
         pages: Math.ceil(total / limitNum),
-        hasNext: pageNum < Math.ceil(total / limitNum),
-        hasPrev: pageNum > 1,
       },
     };
 
-    // Store in cache for 5 minutes
+    // Cache the result for 5 minutes
     cache.set(cacheKey, result, 300);
 
     res.status(200).json({
@@ -250,7 +190,7 @@ const createProduct = async (req, res, next) => {
       }
     }
 
-    // Normalize Category and Condition to match Enums
+    // Normalize Category and Condition to match Enums (Case-insensitive)
     const { CATEGORIES, CONDITIONS } = require("../models/Product");
     const normalizedCategory = CATEGORIES.find(c => 
       c.toLowerCase().replace(/\s+/g, "-") === category?.toLowerCase().replace(/\s+/g, "-")
@@ -277,29 +217,20 @@ const createProduct = async (req, res, next) => {
     // Update seller's total listings
     await User.findByIdAndUpdate(req.user._id, { $inc: { totalListings: 1 } });
 
-    const populated = await product.populate(
-      "seller",
-      "name avatar college rating"
-    );
-
     // Invalidate cache
     cache.delByPrefix("products_list_");
 
     res.status(201).json({
       success: true,
-      message: "Product listed successfully! 🎉",
-      data: { product: populated },
+      message: "Product listed successfully",
+      data: product,
     });
   } catch (error) {
-    // Delete uploaded files if product creation fails
-    if (req.files) {
-      req.files.forEach((file) => deleteFile(file.path));
-    }
     next(error);
   }
 };
 
-// PUT /api/products/:id - Update product
+// PUT /api/products/:id - Update product listing
 const updateProduct = async (req, res, next) => {
   try {
     const product = await Product.findById(req.params.id);
@@ -311,78 +242,58 @@ const updateProduct = async (req, res, next) => {
     if (product.seller.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
-        message: "You can only edit your own listings",
+        message: "You are not authorized to update this listing",
       });
-    }
-
-    if (!product.isAvailable) {
-      return res.status(400).json({
-        success: false,
-        message: "Cannot edit a sold product",
-      });
-    }
-
-    const allowed = [
-      "title", "description", "price", "originalPrice",
-      "category", "condition", "location", "tags", "isAvailable",
-    ];
-
-    const updateData = {};
-    for (const field of allowed) {
-      if (req.body[field] !== undefined) {
-        updateData[field] = req.body[field];
-      }
     }
 
     // Handle new images
+    let imageUrls = product.images;
     if (req.files && req.files.length > 0) {
-      const newImages = req.files.map((f) => getFileUrl(req, f.filename));
-      updateData.images = newImages;
+      const newImages = req.files.map((file) => getFileUrl(req, file.filename));
+      imageUrls = [...imageUrls, ...newImages].slice(0, 5);
     }
 
-    // Handle isAvailable logic (move to history and delete)
-    if (updateData.isAvailable === false && product.isAvailable === true) {
-      // 1. Create Transaction Record
-      await Transaction.create({
-        productTitle: product.title,
-        price: product.price,
-        category: product.category,
-        seller: product.seller,
-        buyer: req.user._id, // Assume current user is buyer if not specified, or handle differently
-      });
-
-      // 2. Delete All Images
-      deleteAllProductImages(product.images);
-
-      // 3. Delete Product
-      await product.deleteOne();
-
-      return res.status(200).json({
-        success: true,
-        message: "Product marked as sold, moved to history, and deleted from listings",
-      });
+    const { category, condition } = req.body;
+    
+    // Normalize if provided
+    let normalizedCategory = category;
+    let normalizedCondition = condition;
+    
+    if (category || condition) {
+      const { CATEGORIES, CONDITIONS } = require("../models/Product");
+      if (category) {
+        normalizedCategory = CATEGORIES.find(c => 
+          c.toLowerCase().replace(/\s+/g, "-") === category.toLowerCase().replace(/\s+/g, "-")
+        ) || category;
+      }
+      if (condition) {
+        normalizedCondition = CONDITIONS.find(c => 
+          c.toLowerCase().replace(/\s+/g, "-") === condition.toLowerCase().replace(/\s+/g, "-")
+        ) || condition;
+      }
     }
 
-    const updated = await Product.findByIdAndUpdate(req.params.id, updateData, {
-      new: true,
-      runValidators: true,
-    }).populate("seller", "name avatar college rating");
+    const updatedProduct = await Product.findByIdAndUpdate(
+      req.params.id,
+      {
+        ...req.body,
+        images: imageUrls,
+        category: normalizedCategory,
+        condition: normalizedCondition,
+      },
+      { new: true, runValidators: true }
+    );
 
     // Invalidate cache
     cache.delByPrefix("products_list_");
     cache.del(`product_${req.params.id}`);
 
-    res.status(200).json({
+    res.json({
       success: true,
-      message: updateData.isAvailable === false 
-        ? "Product marked as sold and images cleared" 
-        : "Product updated successfully",
-      data: { product: updated },
+      message: "Product updated successfully",
+      data: updatedProduct,
     });
   } catch (error) {
-    if (req.files) {
-      req.files.forEach((f) => deleteFile(f.path));
-    }
     next(error);
   }
 };
@@ -399,34 +310,23 @@ const deleteProduct = async (req, res, next) => {
     if (product.seller.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
-        message: "You can only delete your own listings",
+        message: "You are not authorized to delete this listing",
       });
     }
 
-    // Delete associated images
-    product.images.forEach((imgUrl) => {
-      const filename = path.basename(imgUrl);
-      const filepath = path.join(
-        process.cwd(),
-        process.env.UPLOAD_PATH || "uploads/",
-        filename
-      );
-      deleteFile(filepath);
-    });
+    // Delete images from storage
+    deleteAllProductImages(product.images);
+
+    // Update seller's total listings count
+    await User.findByIdAndUpdate(req.user._id, { $inc: { totalListings: -1 } });
 
     await product.deleteOne();
-    await User.findByIdAndUpdate(product.seller, {
-      $inc: { totalListings: -1 },
-    });
 
     // Invalidate cache
     cache.delByPrefix("products_list_");
     cache.del(`product_${req.params.id}`);
 
-    res.status(200).json({
-      success: true,
-      message: "Product deleted successfully",
-    });
+    res.json({ success: true, message: "Listing deleted successfully" });
   } catch (error) {
     next(error);
   }
@@ -477,7 +377,7 @@ const toggleWishlist = async (req, res, next) => {
       ]);
       return res.status(200).json({
         success: true,
-        message: "Added to wishlist ❤️",
+        message: "Added to wishlist",
         data: { isWishlisted: true },
       });
     }
@@ -486,12 +386,11 @@ const toggleWishlist = async (req, res, next) => {
   }
 };
 
-// GET /api/products/wishlist - Get current user's wishlist
+// GET /api/products/wishlist - Get user's wishlist
 const getWishlist = async (req, res, next) => {
   try {
     const user = await User.findById(req.user._id).populate({
       path: "wishlist",
-      match: { isAvailable: true },
       populate: { path: "seller", select: "name avatar college" },
     });
 
@@ -588,6 +487,10 @@ const markAsSold = async (req, res, next) => {
 
     // 4. Delete the original product document
     await product.deleteOne();
+
+    // Invalidate cache
+    cache.delByPrefix("products_list_");
+    cache.del(`product_${req.params.id}`);
 
     res.status(200).json({
       success: true,
