@@ -4,6 +4,7 @@ const Notification = require("../models/Notification");
 const Transaction = require("../models/Transaction");
 const { getFileUrl, deleteFile } = require("../middleware/upload");
 const { AppError } = require("../middleware/errorHandler");
+const cache = require("../utils/cache");
 const path = require("path");
 const fs = require("fs");
 
@@ -114,6 +115,16 @@ const getProducts = async (req, res, next) => {
 
     const sortQuery = sortMap[sort] || { createdAt: -1 };
 
+    const cacheKey = `products_list_${JSON.stringify(req.query)}`;
+    const cachedData = cache.get(cacheKey);
+    if (cachedData) {
+      return res.status(200).json({
+        success: true,
+        data: cachedData,
+        source: "cache"
+      });
+    }
+
     const [products, total] = await Promise.all([
       Product.find(query)
         .sort(sortQuery)
@@ -123,19 +134,25 @@ const getProducts = async (req, res, next) => {
       Product.countDocuments(query),
     ]);
 
+    const result = {
+      products,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        pages: Math.ceil(total / limitNum),
+        hasNext: pageNum < Math.ceil(total / limitNum),
+        hasPrev: pageNum > 1,
+      },
+    };
+
+    // Store in cache for 5 minutes
+    cache.set(cacheKey, result, 300);
+
     res.status(200).json({
       success: true,
-      data: {
-        products,
-        pagination: {
-          total,
-          page: pageNum,
-          limit: limitNum,
-          pages: Math.ceil(total / limitNum),
-          hasNext: pageNum < Math.ceil(total / limitNum),
-          hasPrev: pageNum > 1,
-        },
-      },
+      data: result,
+      source: "db"
     });
   } catch (error) {
     next(error);
@@ -145,6 +162,16 @@ const getProducts = async (req, res, next) => {
 // GET /api/products/:id - Get single product
 const getProduct = async (req, res, next) => {
   try {
+    const cacheKey = `product_${req.params.id}`;
+    const cachedProduct = cache.get(cacheKey);
+    if (cachedProduct) {
+      return res.status(200).json({
+        success: true,
+        data: cachedProduct,
+        source: "cache"
+      });
+    }
+
     const product = await Product.findById(req.params.id).populate(
       "seller",
       "name avatar college department year rating totalSold lastSeen"
@@ -166,9 +193,13 @@ const getProduct = async (req, res, next) => {
       isWishlisted = product.wishlistedBy.includes(req.user._id);
     }
 
+    const result = { product, isWishlisted };
+    cache.set(cacheKey, result, 600); // Cache for 10 mins
+
     res.status(200).json({
       success: true,
-      data: { product, isWishlisted },
+      data: result,
+      source: "db"
     });
   } catch (error) {
     next(error);
@@ -229,6 +260,9 @@ const createProduct = async (req, res, next) => {
       "seller",
       "name avatar college rating"
     );
+
+    // Invalidate cache
+    cache.delByPrefix("products_list_");
 
     res.status(201).json({
       success: true,
@@ -313,6 +347,10 @@ const updateProduct = async (req, res, next) => {
       runValidators: true,
     }).populate("seller", "name avatar college rating");
 
+    // Invalidate cache
+    cache.delByPrefix("products_list_");
+    cache.del(`product_${req.params.id}`);
+
     res.status(200).json({
       success: true,
       message: updateData.isAvailable === false 
@@ -359,6 +397,10 @@ const deleteProduct = async (req, res, next) => {
     await User.findByIdAndUpdate(product.seller, {
       $inc: { totalListings: -1 },
     });
+
+    // Invalidate cache
+    cache.delByPrefix("products_list_");
+    cache.del(`product_${req.params.id}`);
 
     res.status(200).json({
       success: true,
