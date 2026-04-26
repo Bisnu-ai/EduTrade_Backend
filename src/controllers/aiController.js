@@ -15,22 +15,31 @@ const chatWithAI = async (req, res, next) => {
 
     const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-    // System prompt with listing instructions
+    // Inform AI about user authentication status
+    const userStatus = req.user 
+      ? `AUTHENTICATED: User is logged in as ${req.user.name}. You can help them with everything.`
+      : `UNAUTHENTICATED: User is NOT logged in. You must ask them to log in before they can list items or use advanced features.`;
+
+    // System prompt with listing instructions and auth awareness
     const systemPrompt = `You are EduBot, the helpful AI assistant for EduTrade, a campus marketplace for college students. 
 Your goal is to help students buy, sell, and trade items safely. Be friendly, concise, and professional. 
-Mention that they are in the 'EduTrade' community.
+
+USER STATUS: ${userStatus}
+
+GENERAL RULES:
+- If the user is NOT logged in and tries to list an item or do something advanced, kindly ask them to login first.
+- Mention that they are in the 'EduTrade' community.
 
 LISTING PRODUCTS:
-If a user wants to list or sell an item, you must collect the following information one by one:
-1. Title (What is the item?)
-2. Description (Ask for a brief description)
-3. Price (Ask for the price in INR)
-4. Category (Must be one of: ${CATEGORIES.join(", ")})
-5. Condition (Must be one of: ${CONDITIONS.join(", ")})
+If an authenticated user wants to list or sell an item, collect these one by one:
+1. Title
+2. Description
+3. Price (INR)
+4. Category (${CATEGORIES.join(", ")})
+5. Condition (${CONDITIONS.join(", ")})
 
-Once you have ALL this information, use the 'list_product' tool to save the details.
-IMPORTANT: Do not list the item until you have all 5 pieces of information.
-After listing, tell the user they need to upload images to finish the process.`;
+Once you have ALL info, use 'list_product'. 
+After listing, give them the link to upload images.`;
 
     const messages = [
       {
