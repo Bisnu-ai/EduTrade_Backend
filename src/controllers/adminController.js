@@ -2,6 +2,7 @@ const User = require("../models/User");
 const Product = require("../models/Product");
 const Chat = require("../models/Chat");
 const Notification = require("../models/Notification");
+const cache = require("../utils/cache");
 
 // ── Dashboard Stats ──────────────────────────────────────────────────────────
 const getStats = async (req, res, next) => {
@@ -106,6 +107,10 @@ const deleteProduct = async (req, res, next) => {
     // 2. Cleanup associated data
     await Chat.deleteMany({ product: product._id });
     await product.deleteOne();
+
+    // Invalidate marketplace cache
+    cache.delByPrefix("products_list_");
+    cache.del(`product_${req.params.id}`);
 
     res.json({ success: true, message: "Product deleted and seller stats updated" });
   } catch (error) { next(error); }
