@@ -24,8 +24,9 @@ const getProducts = async (req, res, next) => {
     const limitNum = Math.min(50, Math.max(1, parseInt(limit)));
     const skip = (pageNum - 1) * limitNum;
 
-    // ── Build Query ──────────────────────────────────────────────────────────
-    const query = { isAvailable: true };
+    // ── Build Query (Relaxed for Debugging) ──────────────────────────────────
+    const query = {}; 
+    // query.isAvailable = true; // Temporarily commented out to find hidden products
 
     // Text Search
     if (search && search.trim().length > 0) {
