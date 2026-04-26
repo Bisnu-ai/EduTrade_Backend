@@ -48,15 +48,17 @@ const getProducts = async (req, res, next) => {
     const limitNum = Math.min(50, Math.max(1, parseInt(limit)));
     const skip = (pageNum - 1) * limitNum;
 
-    const query = { isAvailable: true };
+    // Initialize query
+    const query = {};
+    query.isAvailable = true;
 
-    // Text search
-    if (search && search.trim()) {
+    // Text search (only if provided and not empty)
+    if (search && typeof search === 'string' && search.trim().length > 0) {
       query.$text = { $search: search.trim() };
     }
 
     // Filters
-    if (category) {
+    if (category && category !== "" && category !== "all") {
       const { CATEGORIES } = require("../models/Product");
       // Find the actual category name from the enum (case-insensitive and handle slugs)
       const actualCategory = CATEGORIES.find(c => 
@@ -248,13 +250,23 @@ const createProduct = async (req, res, next) => {
       }
     }
 
+    // Normalize Category and Condition to match Enums
+    const { CATEGORIES, CONDITIONS } = require("../models/Product");
+    const normalizedCategory = CATEGORIES.find(c => 
+      c.toLowerCase().replace(/\s+/g, "-") === category?.toLowerCase().replace(/\s+/g, "-")
+    ) || category;
+
+    const normalizedCondition = CONDITIONS.find(c => 
+      c.toLowerCase().replace(/\s+/g, "-") === condition?.toLowerCase().replace(/\s+/g, "-")
+    ) || condition;
+
     const product = await Product.create({
       title,
       description,
       price,
       originalPrice: originalPrice || undefined,
-      category,
-      condition,
+      category: normalizedCategory,
+      condition: normalizedCondition,
       images: imageUrls,
       seller: req.user._id,
       college: req.user.college,
