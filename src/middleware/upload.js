@@ -61,6 +61,26 @@ const getFileUrl = (req, filename) => {
   return `${req.protocol}://${req.get("host")}/uploads/${filename}`;
 };
 
+// Helper to delete multiple product images
+const deleteAllProductImages = (imageUrls) => {
+  if (!imageUrls || !Array.isArray(imageUrls)) return;
+  
+  imageUrls.forEach(url => {
+    try {
+      // Extract filename from URL (e.g., http://localhost:5000/uploads/file.jpg -> file.jpg)
+      const filename = url.split('/').pop();
+      if (filename) {
+        const filepath = path.join(process.cwd(), process.env.UPLOAD_PATH || "uploads/", filename);
+        if (fs.existsSync(filepath)) {
+          fs.unlinkSync(filepath);
+        }
+      }
+    } catch (err) {
+      console.error("FILE_DELETE_ERROR:", err);
+    }
+  });
+};
+
 // Helper to delete a file
 const deleteFile = (filepath) => {
   if (fs.existsSync(filepath)) {
@@ -68,4 +88,10 @@ const deleteFile = (filepath) => {
   }
 };
 
-module.exports = { uploadAvatar, uploadProductImages, getFileUrl, deleteFile };
+module.exports = { 
+  uploadAvatar, 
+  uploadProductImages, 
+  getFileUrl, 
+  deleteFile, 
+  deleteAllProductImages 
+};
