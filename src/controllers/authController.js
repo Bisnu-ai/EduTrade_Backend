@@ -118,7 +118,7 @@ const register = async (req, res, next) => {
       role, // Set role here
     });
 
-    await sendOTP(email, otp);
+    sendOTP(email, otp);
 
     res.status(201).json({
       success: true,
@@ -162,7 +162,7 @@ const login = async (req, res, next) => {
       user.otp = otp;
       user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
       await user.save({ validateBeforeSave: false });
-      await sendOTP(user.email, otp);
+      sendOTP(user.email, otp);
 
       return res.status(403).json({
         success: false,
@@ -458,7 +458,7 @@ const resendOTP = async (req, res, next) => {
     user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
     await user.save({ validateBeforeSave: false });
 
-    await sendOTP(user.email, otp);
+    sendOTP(user.email, otp);
 
     res.status(200).json({
       success: true,
@@ -488,7 +488,7 @@ const forgotPassword = async (req, res, next) => {
     user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
     await user.save({ validateBeforeSave: false });
 
-    await sendOTP(user.email, otp, "EduTrade - Password Reset Request");
+    sendOTP(user.email, otp, "EduTrade - Password Reset Request");
 
     res.status(200).json({
       success: true,
