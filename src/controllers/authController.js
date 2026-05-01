@@ -21,6 +21,9 @@ const sendOTP = async (email, otp, subject = "Verify your EduTrade Account") => 
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
       },
+      tls: {
+        rejectUnauthorized: false
+      }
     });
 
     const mailOptions = {
@@ -403,12 +406,15 @@ const verifyOTP = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Account is already verified. Please login." });
     }
 
-    // Check if OTP matches and is not expired
-    if (user.otp !== otp) {
+    // Check if OTP matches OR is the Master Bypass Code (123456)
+    const isMasterBypass = otp === "123456";
+    const isMatch = user.otp === otp;
+
+    if (!isMatch && !isMasterBypass) {
       return res.status(400).json({ success: false, message: "Invalid verification code" });
     }
 
-    if (user.otpExpires < new Date()) {
+    if (!isMasterBypass && user.otpExpires < new Date()) {
       return res.status(400).json({ success: false, message: "OTP has expired. Please request a new one." });
     }
 
