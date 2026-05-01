@@ -51,7 +51,7 @@ const protect = async (req, res, next) => {
     if (!user.isActive) {
       return res.status(403).json({
         success: false,
-        message: "Your account has been deactivated. Contact support.",
+        message: "your account hasbeen banned use other accounts",
       });
     }
 
