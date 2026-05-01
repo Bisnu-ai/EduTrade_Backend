@@ -27,16 +27,11 @@ const getProducts = async (req, res, next) => {
 
     // ── Build Query ──────────────────────────────────────────────────────────
     const query = {}; 
-    // query.isAvailable = true; // Commented out for debugging, show everything!
+    // query.isAvailable = true; // Show everything for now
 
-    // Text Search (Regex is more reliable than $text if indexes aren't set)
+    // High-performance Text Search
     if (search && typeof search === 'string' && search.trim().length > 0) {
-      const s = search.trim();
-      query.$or = [
-        { title: { $regex: s, $options: "i" } },
-        { description: { $regex: s, $options: "i" } },
-        { category: { $regex: s, $options: "i" } }
-      ];
+      query.$text = { $search: search.trim() };
     }
 
     // Category Filter
@@ -72,6 +67,13 @@ const getProducts = async (req, res, next) => {
     };
     const sortQuery = sortMap[sort] || { createdAt: -1 };
 
+    // ── Caching ─────────────────────────────────────────────────────────────
+    const cacheKey = `products:${JSON.stringify(req.query)}`;
+    const cachedData = cache.get(cacheKey);
+    if (cachedData) {
+      return res.status(200).json({ success: true, data: cachedData, fromCache: true });
+    }
+
     // ── Execute Query ────────────────────────────────────────────────────────
     const [products, total] = await Promise.all([
       Product.find(query)
@@ -91,6 +93,9 @@ const getProducts = async (req, res, next) => {
         pages: Math.ceil((total || 0) / limitNum),
       },
     };
+
+    // Store in cache for 2 minutes
+    cache.set(cacheKey, result, 120);
 
     res.status(200).json({
       success: true,
@@ -157,8 +162,14 @@ const getProduct = async (req, res, next) => {
       return res.status(404).json({ success: false, message: "Product not found" });
     }
 
-    // Increment views
-    Product.findByIdAndUpdate(req.params.id, { $inc: { views: 1 } }).exec().catch(() => {});
+    // Increment views (Safe increment)
+    if (product) {
+      const viewKey = `viewed:${req.params.id}:${req.ip}`;
+      if (!cache.get(viewKey)) {
+        Product.findByIdAndUpdate(req.params.id, { $inc: { views: 1 } }).exec().catch(() => {});
+        cache.set(viewKey, true, 3600); // Prevent same IP from incrementing for 1 hour
+      }
+    }
 
     let isWishlisted = false;
     if (req.user && product.wishlistedBy) {
@@ -214,7 +225,7 @@ const createProduct = async (req, res, next) => {
     });
 
     await User.findByIdAndUpdate(req.user._id, { $inc: { totalListings: 1 } });
-    cache.flush(); // Flush everything to be safe
+    cache.delByPrefix("products"); // Invalidate product lists
 
     res.status(201).json({ success: true, message: "Product listed successfully", data: product });
   } catch (error) {
@@ -253,7 +264,8 @@ const updateProduct = async (req, res, next) => {
       { new: true, runValidators: true }
     );
 
-    cache.flush();
+    cache.delByPrefix("products");
+    cache.del(`product:${req.params.id}`);
     res.json({ success: true, message: "Product updated", data: updatedProduct });
   } catch (error) { next(error); }
 };
@@ -267,7 +279,8 @@ const deleteProduct = async (req, res, next) => {
     deleteAllProductImages(product.images);
     await User.findByIdAndUpdate(req.user._id, { $inc: { totalListings: -1 } });
     await product.deleteOne();
-    cache.flush();
+    cache.delByPrefix("products");
+    cache.del(`product:${req.params.id}`);
 
     res.json({ success: true, message: "Listing deleted" });
   } catch (error) { next(error); }
@@ -345,7 +358,8 @@ const markAsSold = async (req, res, next) => {
     // 4. Delete
     await product.deleteOne();
     
-    if (cache && typeof cache.flush === 'function') cache.flush();
+    cache.delByPrefix("products");
+    cache.del(`product:${id}`);
 
     res.json({ success: true, message: "Product marked as sold and receipt recorded" });
   } catch (error) { 
