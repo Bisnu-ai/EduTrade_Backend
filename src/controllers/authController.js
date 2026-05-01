@@ -406,15 +406,12 @@ const verifyOTP = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Account is already verified. Please login." });
     }
 
-    // Check if OTP matches OR is the Master Bypass Code (123456)
-    const isMasterBypass = otp === "123456";
-    const isMatch = user.otp === otp;
-
-    if (!isMatch && !isMasterBypass) {
+    // Check if OTP matches and is not expired
+    if (user.otp !== otp) {
       return res.status(400).json({ success: false, message: "Invalid verification code" });
     }
 
-    if (!isMasterBypass && user.otpExpires < new Date()) {
+    if (user.otpExpires < new Date()) {
       return res.status(400).json({ success: false, message: "OTP has expired. Please request a new one." });
     }
 
