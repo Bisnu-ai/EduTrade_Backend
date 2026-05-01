@@ -393,24 +393,31 @@ const rateUser = async (req, res, next) => {
 // POST /api/auth/verify-otp
 const verifyOTP = async (req, res, next) => {
   try {
-    const { userId, otp } = req.body;
+    const { userId, email, otp } = req.body;
 
-    if (!userId || !otp) {
-      return res.status(400).json({ success: false, message: "User ID and OTP are required" });
+    if ((!userId && !email) || !otp) {
+      return res.status(400).json({ success: false, message: "User identification and OTP are required" });
     }
 
-    const user = await User.findById(userId);
+    // Find user by ID or Email
+    const query = userId ? { _id: userId } : { email: email.toLowerCase() };
+    const user = await User.findOne(query);
+
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
     if (user.isVerified) {
-      return res.status(400).json({ success: false, message: "Account is already verified" });
+      return res.status(400).json({ success: false, message: "Account is already verified. Please login." });
     }
 
     // Check if OTP matches and is not expired
-    if (user.otp !== otp || user.otpExpires < new Date()) {
-      return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
+    if (user.otp !== otp) {
+      return res.status(400).json({ success: false, message: "Invalid verification code" });
+    }
+
+    if (user.otpExpires < new Date()) {
+      return res.status(400).json({ success: false, message: "OTP has expired. Please request a new one." });
     }
 
     // Mark as verified and clear OTP
@@ -428,8 +435,15 @@ const verifyOTP = async (req, res, next) => {
 // POST /api/auth/resend-otp
 const resendOTP = async (req, res, next) => {
   try {
-    const { userId } = req.body;
-    const user = await User.findById(userId);
+    const { userId, email } = req.body;
+    
+    if (!userId && !email) {
+      return res.status(400).json({ success: false, message: "User identification is required" });
+    }
+
+    // Find user by ID or Email
+    const query = userId ? { _id: userId } : { email: email.toLowerCase() };
+    const user = await User.findOne(query);
 
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found" });
@@ -448,7 +462,7 @@ const resendOTP = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      message: "A new OTP has been sent to your email. 📧",
+      message: "A new verification code has been sent to your email. 📧",
     });
   } catch (error) {
     next(error);
