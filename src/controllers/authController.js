@@ -17,9 +17,6 @@ const sendOTP = async (email, otp, subject = "Verify your EduTrade Account") => 
   try {
     const transporter = nodemailer.createTransport({
       service: "gmail",
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true, // use SSL
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
@@ -33,35 +30,26 @@ const sendOTP = async (email, otp, subject = "Verify your EduTrade Account") => 
       html: `
         <div style="background-color: #f8fafc; padding: 40px 20px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
           <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 24px; overflow: hidden; box-shadow: 0 10px 25px rgba(99, 102, 241, 0.1);">
-            <!-- Header -->
             <div style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); padding: 40px; text-align: center;">
               <div style="font-size: 32px; font-weight: 800; color: white; letter-spacing: -1px; margin-bottom: 8px;">EduTrade</div>
               <div style="color: rgba(255,255,255,0.8); font-size: 14px; font-weight: 600; text-transform: uppercase; tracking: 1px;">Secure Campus Marketplace</div>
             </div>
-            
-            <!-- Body -->
             <div style="padding: 40px;">
               <h1 style="font-size: 24px; font-weight: 700; color: #1e293b; margin-top: 0; margin-bottom: 16px;">Verify your identity</h1>
               <p style="color: #64748b; font-size: 16px; line-height: 24px; margin-bottom: 32px;">
-                Hello! Someone is trying to sign in or register with your email. Use the security code below to complete the process.
+                Hello! Use the security code below to complete your verification process on EduTrade.
               </p>
-              
-              <!-- OTP Box -->
               <div style="background: #f1f5f9; border-radius: 16px; padding: 32px; text-align: center; margin-bottom: 32px;">
                 <div style="color: #64748b; font-size: 12px; font-weight: 700; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 1px;">Your Verification Code</div>
                 <div style="font-size: 48px; font-weight: 800; color: #6366f1; letter-spacing: 10px; margin-left: 10px;">${otp}</div>
               </div>
-              
               <p style="color: #ef4444; font-size: 13px; font-weight: 600; text-align: center; margin-bottom: 0;">
                 This code expires in 10 minutes. Do not share it with anyone.
               </p>
             </div>
-            
-            <!-- Footer -->
             <div style="background: #f8fafc; padding: 24px; text-align: center; border-top: 1px solid #e2e8f0;">
               <p style="color: #94a3b8; font-size: 12px; margin: 0;">
-                &copy; 2026 EduTrade. All rights reserved. <br/>
-                Empowering students to trade smarter.
+                &copy; 2026 EduTrade. All rights reserved.
               </p>
             </div>
           </div>
@@ -70,10 +58,14 @@ const sendOTP = async (email, otp, subject = "Verify your EduTrade Account") => 
     };
 
     await transporter.sendMail(mailOptions);
-    console.log(`✅ Email OTP Sent Successfully to ${email}`);
+    console.log(`\n📧 [EMAIL SENT] To: ${email} | Subject: ${subject}`);
   } catch (error) {
-    console.error(`❌ NODEMAILER ERROR:`, error.message);
-    console.log(`🔢 SERVER LOG OTP (Email failed): ${otp}\n`);
+    console.error(`\n❌ [EMAIL FAILED] Error:`, error.message);
+    console.log(`\n************************************************`);
+    console.log(`🔥 [EMERGENCY OTP LOG]`);
+    console.log(`📧 User: ${email}`);
+    console.log(`🔢 OTP: ${otp}`);
+    console.log(`************************************************\n`);
   }
 };
 
