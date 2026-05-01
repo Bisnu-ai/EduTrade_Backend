@@ -1,5 +1,6 @@
 const Product = require("../models/Product");
 const User = require("../models/User");
+const Notification = require("../models/Notification");
 const Chat = require("../models/Chat");
 const cache = require("../utils/cache");
 const Transaction = require("../models/Transaction");
@@ -305,6 +306,25 @@ const toggleWishlist = async (req, res, next) => {
         Product.findByIdAndUpdate(product._id, { $addToSet: { wishlistedBy: userId } }),
         User.findByIdAndUpdate(userId, { $addToSet: { wishlist: product._id } }),
       ]);
+
+      // Send notification to seller
+      try {
+        if (product.seller.toString() !== userId.toString()) {
+          const notification = await Notification.create({
+            recipient: product.seller,
+            sender: userId,
+            type: "wishlist",
+            title: "New Wishlist",
+            message: `${req.user.name} added ${product.title} to their wishlist!`,
+            relatedId: product._id,
+          });
+          const io = req.app.get("io");
+          if (io) io.to(product.seller.toString()).emit("newNotification", notification);
+        }
+      } catch (err) {
+        console.error("Wishlist notification error:", err.message);
+      }
+
       res.json({ success: true, data: { isWishlisted: true } });
     }
   } catch (error) { next(error); }
@@ -347,7 +367,23 @@ const markAsSold = async (req, res, next) => {
       buyer: soldTo
     });
 
-    // 2. Cleanup
+    // 2. Notify Buyer
+    try {
+      const notification = await Notification.create({
+        recipient: soldTo,
+        sender: req.user._id,
+        type: "sold",
+        title: "Purchase Successful",
+        message: `Congratulations! You've successfully purchased ${product.title}.`,
+        relatedId: product._id,
+      });
+      const io = req.app.get("io");
+      if (io) io.to(soldTo.toString()).emit("newNotification", notification);
+    } catch (err) {
+      console.error("Sold notification error:", err.message);
+    }
+
+    // 3. Cleanup
     if (product.images && product.images.length > 0) {
       deleteAllProductImages(product.images);
     }
