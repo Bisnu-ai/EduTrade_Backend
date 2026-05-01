@@ -32,9 +32,13 @@ const getChatHistory = async (req, res, next) => {
 const saveMessage = async (req, res, next) => {
   try {
     const { recipientId, productId, message } = req.body;
-    const senderId = req.user._id;
+    const senderId = req.user._id.toString();
 
-    // 1. Try to find an existing chat first (allows chatting after product deletion)
+    if (!recipientId || !productId || !message) {
+      return res.status(400).json({ success: false, message: "Recipient, Product, and Message are required" });
+    }
+
+    // 1. Try to find an existing chat first
     let chat = await Chat.findOne({
       product: productId,
       $or: [
@@ -47,11 +51,11 @@ const saveMessage = async (req, res, next) => {
     if (!chat) {
       const productDoc = await Product.findById(productId);
       if (!productDoc) {
-        return res.status(404).json({ success: false, message: "Product not found. Cannot start new chat." });
+        return res.status(404).json({ success: false, message: "Product not found. Cannot start a new conversation." });
       }
 
       const actualSellerId = productDoc.seller.toString();
-      const isSenderSeller = senderId.toString() === actualSellerId;
+      const isSenderSeller = senderId === actualSellerId;
 
       chat = await Chat.create({
         product: productId,
@@ -61,14 +65,19 @@ const saveMessage = async (req, res, next) => {
       });
     }
 
-    const isSenderSeller = senderId.toString() === chat.seller.toString();
-
-    // 3. Save the Message
-    chat.messages.push({ sender: senderId, content: message });
+    // 3. Update chat with the new message
+    const isSenderSeller = senderId === chat.seller.toString();
+    
+    chat.messages.push({ 
+      sender: senderId, 
+      content: message,
+      timestamp: new Date()
+    });
+    
     chat.lastMessage = message;
     chat.lastMessageAt = Date.now();
     
-    // Increment unread counts
+    // Update unread counts
     if (isSenderSeller) {
       chat.unreadCountBuyer = (chat.unreadCountBuyer || 0) + 1;
     } else {
@@ -78,6 +87,7 @@ const saveMessage = async (req, res, next) => {
     await chat.save();
     return res.status(200).json({ success: true, message: "Message saved", data: { chatId: chat._id } });
   } catch (error) {
+    console.error("Save message error:", error);
     next(error);
   }
 };
