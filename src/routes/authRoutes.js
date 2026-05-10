@@ -13,6 +13,7 @@ const {
   resendOTP,
   forgotPassword,
   resetPassword,
+  googleLogin,
 } = require("../controllers/authController");
 const { protect } = require("../middleware/auth");
 const { uploadAvatar } = require("../middleware/upload");
@@ -26,6 +27,7 @@ router.post("/verify-otp", verifyOTP);
 router.post("/resend-otp", resendOTP);
 router.post("/forgot-password", forgotPassword);
 router.post("/reset-password", resetPassword);
+router.post("/google", googleLogin);
 router.get("/me", protect, getMe);
 router.get("/profile/:id", getProfile); // New public/protected profile endpoint
 router.put("/update-profile", protect, uploadAvatar, updateProfile);

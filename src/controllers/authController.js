@@ -640,10 +640,64 @@ const resetPassword = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      message: "Password reset successful! You can now login with your new password. 🔐",
+      message: "Password reset successful! You can now login with your new password. \ud83d\udd10",
     });
   } catch (error) {
     next(error);
+  }
+};
+
+// POST /api/auth/google
+const googleLogin = async (req, res, next) => {
+  try {
+    const { access_token } = req.body;
+
+    if (!access_token) {
+      return res.status(400).json({ success: false, message: "Google access token is required" });
+    }
+
+    // Verify token with Google
+    const response = await axios.get(
+      `https://www.googleapis.com/oauth2/v3/userinfo?access_token=${access_token}`
+    );
+
+    const { email, name, picture, sub: googleId } = response.data;
+
+    // Check if user exists
+    let user = await User.findOne({ email: email.toLowerCase() });
+
+    if (!user) {
+      // Create new user (Auto-verified since they come from Google)
+      const role = email === process.env.ADMIN_EMAIL ? "admin" : "user";
+      
+      // For Google users, we set a dummy password
+      const dummyPassword = Math.random().toString(36).slice(-10) + "Aa1!";
+      
+      user = await User.create({
+        name,
+        email: email.toLowerCase(),
+        password: dummyPassword,
+        avatar: picture,
+        isVerified: true,
+        role,
+        googleId,
+      });
+    } else {
+      // If user exists but wasn't verified, verify them now
+      if (!user.isVerified) {
+        user.isVerified = true;
+      }
+      // Update googleId and avatar if not set
+      if (!user.googleId) user.googleId = googleId;
+      if (!user.avatar && picture) user.avatar = picture;
+      
+      await user.save({ validateBeforeSave: false });
+    }
+
+    sendTokenResponse(user, 200, res, `Welcome to CampusKart, ${user.name}! \ud83c\udf93`);
+  } catch (error) {
+    console.error("Google Login Error:", error.message);
+    res.status(401).json({ success: false, message: "Google verification failed" });
   }
 };
 
@@ -660,4 +714,5 @@ module.exports = {
   resendOTP,
   forgotPassword,
   resetPassword,
+  googleLogin,
 };
