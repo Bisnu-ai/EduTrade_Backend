@@ -58,6 +58,9 @@ const userSchema = new mongoose.Schema(
       type: String,
       maxlength: [200, "Bio cannot exceed 200 characters"],
     },
+    dob: {
+      type: Date,
+    },
     role: {
       type: String,
       enum: ["user", "admin"],

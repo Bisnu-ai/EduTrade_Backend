@@ -268,7 +268,7 @@ const getMe = async (req, res, next) => {
 // PUT /api/auth/update-profile
 const updateProfile = async (req, res, next) => {
   try {
-    const { name, phone, college, department, year, bio } = req.body;
+    const { name, phone, college, department, year, bio, dob } = req.body;
 
     // Fields not allowed to update via this route
     const restrictedFields = ["email", "password", "isActive", "isVerified"];
@@ -288,6 +288,7 @@ const updateProfile = async (req, res, next) => {
     if (department !== undefined) updateData.department = department;
     if (year !== undefined) updateData.year = year;
     if (bio !== undefined) updateData.bio = bio;
+    if (dob !== undefined) updateData.dob = dob;
 
     // Handle avatar upload
     if (req.file) {
