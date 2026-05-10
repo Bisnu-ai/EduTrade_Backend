@@ -7,18 +7,6 @@ const { AppError } = require("../middleware/errorHandler");
 const { deleteFile } = require("../middleware/upload");
 const path = require("path");
 
-// Create reusable transporter object using the default SMTP transport
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  tls: {
-    rejectUnauthorized: false
-  }
-});
-
 // Helper to generate 6-digit OTP
 const generateOTP = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -27,6 +15,19 @@ const generateOTP = () => {
 // Helper to send OTP via Email
 const sendOTP = async (email, otp, subject = "Verify your CampusKart Account") => {
   try {
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      pool: true, // Use SMTP pooling for better performance
+      maxConnections: 5,
+      maxMessages: 100,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+      tls: {
+        rejectUnauthorized: false
+      }
+    });
 
     const mailOptions = {
       from: `"CampusKart Support" <${process.env.EMAIL_USER}>`,
