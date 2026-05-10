@@ -61,6 +61,16 @@ const userSchema = new mongoose.Schema(
     dob: {
       type: Date,
     },
+    trustScore: {
+      type: Number,
+      default: 100,
+      min: 0,
+      max: 100
+    },
+    badges: {
+      type: [String],
+      default: ["New Member"]
+    },
     role: {
       type: String,
       enum: ["user", "admin"],
