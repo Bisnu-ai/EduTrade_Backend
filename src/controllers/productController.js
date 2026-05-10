@@ -409,6 +409,46 @@ const getCategories = async (req, res) => {
   res.json({ success: true, data: { categories: CATEGORIES, conditions: CONDITIONS } });
 };
 
+// GET /api/products/public-stats - Get real-time stats for Hero section
+const getPublicStats = async (req, res, next) => {
+  try {
+    const activeStudents = await User.countDocuments();
+    const itemsTraded = await Product.countDocuments();
+    const colleges = await User.distinct("college");
+    const collegesJoined = colleges.length;
+    
+    // Calculate total savings: Sum of (originalPrice - price) for all items
+    // or a fallback calculation for traded items
+    const soldProducts = await Product.find({ isAvailable: false }, 'price originalPrice');
+    let totalSavings = 0;
+    soldProducts.forEach(p => {
+      if (p.originalPrice && p.originalPrice > p.price) {
+        totalSavings += (p.originalPrice - p.price);
+      } else {
+        totalSavings += (p.price * 0.4); // Assume 40% savings on average
+      }
+    });
+
+    // Add some base numbers for a better look if DB is empty
+    const baseStudents = activeStudents > 0 ? activeStudents : 0;
+    const baseItems = itemsTraded > 0 ? itemsTraded : 0;
+    const baseColleges = collegesJoined > 0 ? collegesJoined : 0;
+    const baseSavings = totalSavings > 0 ? totalSavings : 0;
+
+    res.status(200).json({
+      success: true,
+      data: {
+        activeStudents: baseStudents,
+        itemsTraded: baseItems,
+        savedByStudents: Math.round(baseSavings),
+        collegesJoined: baseColleges
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getProducts,
   getProduct,
@@ -420,4 +460,5 @@ module.exports = {
   getMyListings,
   markAsSold,
   getCategories,
+  getPublicStats,
 };

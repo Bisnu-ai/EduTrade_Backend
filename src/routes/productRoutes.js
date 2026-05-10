@@ -11,6 +11,7 @@ const {
   getMyListings,
   markAsSold,
   getCategories,
+  getPublicStats,
 } = require("../controllers/productController");
 const { protect, optionalAuth } = require("../middleware/auth");
 const { uploadProductImages } = require("../middleware/upload");
@@ -18,6 +19,7 @@ const { uploadProductImages } = require("../middleware/upload");
 // Public routes
 router.get("/", getProducts);
 router.get("/categories", getCategories);
+router.get("/public-stats", getPublicStats);
 
 // Protected routes (Static paths first)
 router.get("/my-listings", protect, getMyListings);
