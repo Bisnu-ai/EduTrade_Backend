@@ -694,7 +694,17 @@ const googleLogin = async (req, res, next) => {
       await user.save({ validateBeforeSave: false });
     }
 
-    sendTokenResponse(user, 200, res, `Welcome to CampusKart, ${user.name}! \ud83c\udf93`);
+    const needsProfileUpdate = !user.college || user.college === "CampusKart University" || !user.year;
+    const { generateToken } = require("../utils/token");
+    const token = generateToken(user._id);
+
+    res.status(200).json({
+      success: true,
+      message: `Welcome to CampusKart, ${user.name}! 🎓`,
+      token,
+      needsProfileUpdate,
+      data: { user },
+    });
   } catch (error) {
     console.error("Google Login Error:", error.message);
     res.status(401).json({ success: false, message: "Google verification failed" });
