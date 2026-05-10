@@ -1,4 +1,5 @@
 const User = require("../models/User");
+const PendingUser = require("../models/PendingUser");
 const Transaction = require("../models/Transaction");
 const axios = require("axios");
 const nodemailer = require("nodemailer");
@@ -23,6 +24,9 @@ const sendOTP = async (email, otp, subject = "Verify your CampusKart Account") =
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
       },
+      connectionTimeout: 10000, // 10 seconds to connect
+      greetingTimeout: 10000,
+      socketTimeout: 15000, // 15 seconds for socket
     });
 
     const mailOptions = {
@@ -79,30 +83,25 @@ const register = async (req, res, next) => {
     const { name, email, password, phone, college, department, year } =
       req.body;
 
-    // Check if email already exists
+    // Check if email already exists in verified Users
     const existingUser = await User.findOne({ email: email.toLowerCase() });
-    
     if (existingUser) {
-      if (existingUser.isVerified) {
-        return res.status(409).json({
-          success: false,
-          message: "An account with this email already exists. Please log in.",
-        });
-      } else {
-        // If user exists but is NOT verified, remove them so we can re-register freshly
-        await User.deleteOne({ _id: existingUser._id });
-      }
+      return res.status(409).json({
+        success: false,
+        message: "An account with this email already exists. Please log in.",
+      });
     }
+
+    // Remove any old pending registration for this email
+    await PendingUser.deleteMany({ email: email.toLowerCase() });
 
     const otp = generateOTP();
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    // Auto-assign admin role if email matches ADMIN_EMAIL in .env
-    const role = email === process.env.ADMIN_EMAIL ? "admin" : "user";
-
-    const user = await User.create({
+    // Save to PendingUser (NOT to User collection)
+    const pendingUser = await PendingUser.create({
       name,
-      email,
+      email: email.toLowerCase(),
       password,
       phone,
       college: college || "CampusKart University",
@@ -110,27 +109,25 @@ const register = async (req, res, next) => {
       year,
       otp,
       otpExpires,
-      isVerified: false, 
-      role, // Set role here
     });
 
+    // Send OTP email
     const emailSent = await sendOTP(email, otp);
     
     if (!emailSent) {
-      // If email failed to send, delete the newly created user to prevent hanging unverified accounts
-      await User.deleteOne({ _id: user._id });
+      await PendingUser.deleteOne({ _id: pendingUser._id });
       return res.status(500).json({
         success: false,
-        message: "Failed to send OTP email. Please check server email configuration or try again later.",
+        message: "Failed to send OTP email. Please try again later.",
       });
     }
 
     res.status(201).json({
       success: true,
-      message: "Registration successful! Please verify the OTP sent to your email. 📧",
+      message: "OTP sent to your email! Please verify to complete registration. 📧",
       data: { 
-        userId: user._id,
-        email: user.email 
+        pendingId: pendingUser._id,
+        email: pendingUser.email 
       },
     });
   } catch (error) {
@@ -162,23 +159,9 @@ const login = async (req, res, next) => {
     }
 
     if (!user.isVerified) {
-      // If not verified, send a new OTP and tell them to verify
-      const otp = generateOTP();
-      user.otp = otp;
-      user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
-      await user.save({ validateBeforeSave: false });
-      const emailSent = await sendOTP(user.email, otp);
-      if (!emailSent) {
-        return res.status(500).json({
-          success: false,
-          message: "Failed to send verification email.",
-        });
-      }
-
       return res.status(403).json({
         success: false,
-        message: "Your account is not verified. A new OTP has been sent to your email. 📧",
-        data: { userId: user._id, email: user.email }
+        message: "Your account is not verified. Please register again.",
       });
     }
 
@@ -406,28 +389,71 @@ const verifyOTP = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "User identification and OTP are required" });
     }
 
-    // Find user by ID or Email
-    const query = userId ? { _id: userId } : { email: email.toLowerCase() };
-    const user = await User.findOne(query);
+    // Look in PendingUser collection first (new registration flow)
+    const pendingQuery = userId ? { _id: userId } : { email: email.toLowerCase() };
+    const pendingUser = await PendingUser.findOne(pendingQuery);
+
+    if (pendingUser) {
+      // Check OTP
+      if (pendingUser.otp !== otp) {
+        return res.status(400).json({ success: false, message: "Invalid verification code" });
+      }
+      if (pendingUser.otpExpires < new Date()) {
+        return res.status(400).json({ success: false, message: "OTP has expired. Please register again." });
+      }
+
+      // OTP is valid! Move from PendingUser to User collection
+      const role = pendingUser.email === process.env.ADMIN_EMAIL ? "admin" : "user";
+
+      // Insert directly to bypass pre-save password hashing (password is already hashed)
+      const userData = {
+        name: pendingUser.name,
+        email: pendingUser.email,
+        password: pendingUser.password, // Already hashed by PendingUser
+        phone: pendingUser.phone || undefined,
+        college: pendingUser.college,
+        department: pendingUser.department || undefined,
+        year: pendingUser.year || undefined,
+        isVerified: true,
+        role,
+        isActive: true,
+        lastSeen: new Date(),
+        totalListings: 0,
+        totalSold: 0,
+        rating: { average: 0, count: 0 },
+        wishlist: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      
+      const result = await User.collection.insertOne(userData);
+      const user = await User.findById(result.insertedId);
+
+      // Delete from pending collection
+      await PendingUser.deleteOne({ _id: pendingUser._id });
+
+      return sendTokenResponse(user, 200, res, "Account verified successfully! Welcome to CampusKart 🎓");
+    }
+
+    // Fallback: Check in User collection (for password reset or old unverified users)
+    const userQuery = userId ? { _id: userId } : { email: email.toLowerCase() };
+    const user = await User.findOne(userQuery);
 
     if (!user) {
-      return res.status(404).json({ success: false, message: "User not found" });
+      return res.status(404).json({ success: false, message: "Registration expired. Please register again." });
     }
 
     if (user.isVerified) {
       return res.status(400).json({ success: false, message: "Account is already verified. Please login." });
     }
 
-    // Check if OTP matches and is not expired
     if (user.otp !== otp) {
       return res.status(400).json({ success: false, message: "Invalid verification code" });
     }
-
     if (user.otpExpires < new Date()) {
       return res.status(400).json({ success: false, message: "OTP has expired. Please request a new one." });
     }
 
-    // Mark as verified and clear OTP
     user.isVerified = true;
     user.otp = null;
     user.otpExpires = null;
@@ -448,12 +474,34 @@ const resendOTP = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "User identification is required" });
     }
 
-    // Find user by ID or Email
+    // Look in PendingUser first
     const query = userId ? { _id: userId } : { email: email.toLowerCase() };
-    const user = await User.findOne(query);
+    const pendingUser = await PendingUser.findOne(query);
 
+    if (pendingUser) {
+      const otp = generateOTP();
+      pendingUser.otp = otp;
+      pendingUser.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
+      await pendingUser.save({ validateBeforeSave: false });
+
+      const emailSent = await sendOTP(pendingUser.email, otp);
+      if (!emailSent) {
+        return res.status(500).json({
+          success: false,
+          message: "Failed to send verification email.",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "A new verification code has been sent to your email. 📧",
+      });
+    }
+
+    // Fallback to User collection (for old unverified users)
+    const user = await User.findOne(query);
     if (!user) {
-      return res.status(404).json({ success: false, message: "User not found" });
+      return res.status(404).json({ success: false, message: "Registration expired. Please register again." });
     }
 
     if (user.isVerified) {
