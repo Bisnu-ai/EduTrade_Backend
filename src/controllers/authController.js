@@ -62,6 +62,7 @@ const sendOTP = async (email, otp, subject = "Verify your CampusKart Account") =
 
     await transporter.sendMail(mailOptions);
     console.log(`\n📧 [EMAIL SENT] To: ${email} | Subject: ${subject}`);
+    return true;
   } catch (error) {
     console.error(`\n❌ [EMAIL FAILED] Error:`, error.message);
     console.log(`\n************************************************`);
@@ -69,6 +70,7 @@ const sendOTP = async (email, otp, subject = "Verify your CampusKart Account") =
     console.log(`📧 User: ${email}`);
     console.log(`🔢 OTP: ${otp}`);
     console.log(`************************************************\n`);
+    return false;
   }
 };
 
@@ -113,7 +115,16 @@ const register = async (req, res, next) => {
       role, // Set role here
     });
 
-    sendOTP(email, otp);
+    const emailSent = await sendOTP(email, otp);
+    
+    if (!emailSent) {
+      // If email failed to send, delete the newly created user to prevent hanging unverified accounts
+      await User.deleteOne({ _id: user._id });
+      return res.status(500).json({
+        success: false,
+        message: "Failed to send OTP email. Please check server email configuration or try again later.",
+      });
+    }
 
     res.status(201).json({
       success: true,
@@ -157,7 +168,13 @@ const login = async (req, res, next) => {
       user.otp = otp;
       user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
       await user.save({ validateBeforeSave: false });
-      sendOTP(user.email, otp);
+      const emailSent = await sendOTP(user.email, otp);
+      if (!emailSent) {
+        return res.status(500).json({
+          success: false,
+          message: "Failed to send verification email.",
+        });
+      }
 
       return res.status(403).json({
         success: false,
@@ -449,7 +466,13 @@ const resendOTP = async (req, res, next) => {
     user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
     await user.save({ validateBeforeSave: false });
 
-    sendOTP(user.email, otp);
+    const emailSent = await sendOTP(user.email, otp);
+    if (!emailSent) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to send verification email.",
+      });
+    }
 
     res.status(200).json({
       success: true,
@@ -479,7 +502,13 @@ const forgotPassword = async (req, res, next) => {
     user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
     await user.save({ validateBeforeSave: false });
 
-    sendOTP(user.email, otp, "CampusKart - Password Reset Request");
+    const emailSent = await sendOTP(user.email, otp, "CampusKart - Password Reset Request");
+    if (!emailSent) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to send reset email.",
+      });
+    }
 
     res.status(200).json({
       success: true,
