@@ -114,24 +114,16 @@ const register = async (req, res, next) => {
       year,
       otp,
       otpExpires,
-      isVerified: false, 
+      isVerified: true, 
       role, // Set role here
     });
 
-    const emailSent = await sendOTP(email, otp);
-    
-    if (!emailSent) {
-      // If email failed to send, delete the newly created user to prevent hanging unverified accounts
-      await User.deleteOne({ _id: user._id });
-      return res.status(500).json({
-        success: false,
-        message: "Failed to send OTP email. Please check server email configuration or try again later.",
-      });
-    }
+    // Send welcome email in background (don't await)
+    sendOTP(email, otp, "Welcome to CampusKart! 🎓");
 
     res.status(201).json({
       success: true,
-      message: "Registration successful! Please verify the OTP sent to your email. 📧",
+      message: "Registration successful! Welcome to CampusKart 🎓",
       data: { 
         userId: user._id,
         email: user.email 
@@ -166,24 +158,8 @@ const login = async (req, res, next) => {
     }
 
     if (!user.isVerified) {
-      // If not verified, send a new OTP and tell them to verify
-      const otp = generateOTP();
-      user.otp = otp;
-      user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
+      user.isVerified = true;
       await user.save({ validateBeforeSave: false });
-      const emailSent = await sendOTP(user.email, otp);
-      if (!emailSent) {
-        return res.status(500).json({
-          success: false,
-          message: "Failed to send verification email.",
-        });
-      }
-
-      return res.status(403).json({
-        success: false,
-        message: "Your account is not verified. A new OTP has been sent to your email. 📧",
-        data: { userId: user._id, email: user.email }
-      });
     }
 
     if (!user.isActive) {
