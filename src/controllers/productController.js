@@ -4,7 +4,7 @@ const Notification = require("../models/Notification");
 const Chat = require("../models/Chat");
 const cache = require("../utils/cache");
 const Transaction = require("../models/Transaction");
-const { getFileUrl, deleteAllProductImages } = require("../middleware/upload");
+const { deleteAllProductImages } = require("../middleware/upload");
 
 // GET /api/products - Get all products with filters & pagination
 const getProducts = async (req, res, next) => {
@@ -195,7 +195,7 @@ const createProduct = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "At least one product image is required" });
     }
 
-    const imageUrls = req.files.map((file) => getFileUrl(req, file.filename));
+    const imageUrls = req.files.map((file) => file.path);
 
     let parsedTags = [];
     try {
@@ -245,7 +245,7 @@ const updateProduct = async (req, res, next) => {
 
     let imageUrls = product.images;
     if (req.files && req.files.length > 0) {
-      const newImages = req.files.map((file) => getFileUrl(req, file.filename));
+      const newImages = req.files.map((file) => file.path);
       imageUrls = [...imageUrls, ...newImages].slice(0, 5);
     }
 

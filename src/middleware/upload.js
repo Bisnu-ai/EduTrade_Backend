@@ -1,48 +1,23 @@
 const multer = require("multer");
-const path = require("path");
-const { v4: uuidv4 } = require("uuid");
-const fs = require("fs");
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const cloudinary = require("cloudinary").v2;
 
-// Ensure upload directory exists
-const ensureDir = (dir) => {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-};
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadDir = path.join(
-      process.cwd(),
-      process.env.UPLOAD_PATH || "uploads/"
-    );
-    ensureDir(uploadDir);
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, `${uuidv4()}${ext}`);
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "campuskart",
+    allowed_formats: ["jpg", "png", "jpeg", "webp"],
   },
 });
 
-const fileFilter = (req, file, cb) => {
-  const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
-  if (allowedTypes.includes(file.mimetype)) {
-    cb(null, true);
-  } else {
-    cb(
-      new multer.MulterError(
-        "LIMIT_UNEXPECTED_FILE",
-        "Only JPEG, PNG, and WebP images are allowed"
-      ),
-      false
-    );
-  }
-};
-
 const upload = multer({
-  storage,
-  fileFilter,
+  storage: storage,
   limits: {
     fileSize: parseInt(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024, // 5MB
     files: 5,
@@ -55,43 +30,80 @@ const uploadAvatar = upload.single("avatar");
 // Product images (up to 5)
 const uploadProductImages = upload.array("images", 5);
 
-// Helper to get public URL from filename
-const getFileUrl = (req, filename) => {
-  if (!filename) return null;
-  return `${req.protocol}://${req.get("host")}/uploads/${filename}`;
+// Helper to extract public ID from Cloudinary URL
+const getPublicIdFromUrl = (url) => {
+  if (!url) return null;
+  // Cloudinary URLs look like: https://res.cloudinary.com/.../upload/v123.../campuskart/filename.jpg
+  // OR local urls look like: http://localhost:5000/uploads/file.jpg
+  try {
+    if (url.includes('cloudinary.com')) {
+      const splitUrl = url.split("/");
+      const filenameWithExt = splitUrl[splitUrl.length - 1];
+      const folder = splitUrl[splitUrl.length - 2];
+      const filename = filenameWithExt.split(".")[0];
+      return `${folder}/${filename}`;
+    } else {
+      // It's a local file (legacy)
+      return null; // Local files are no longer deleted this way, or we just ignore
+    }
+  } catch (error) {
+    return null;
+  }
 };
 
 // Helper to delete multiple product images
-const deleteAllProductImages = (imageUrls) => {
+const deleteAllProductImages = async (imageUrls) => {
   if (!imageUrls || !Array.isArray(imageUrls)) return;
   
-  imageUrls.forEach(url => {
+  for (const url of imageUrls) {
     try {
-      // Extract filename from URL (e.g., http://localhost:5000/uploads/file.jpg -> file.jpg)
-      const filename = url.split('/').pop();
-      if (filename) {
-        const filepath = path.join(process.cwd(), process.env.UPLOAD_PATH || "uploads/", filename);
-        if (fs.existsSync(filepath)) {
-          fs.unlinkSync(filepath);
+      const publicId = getPublicIdFromUrl(url);
+      if (publicId) {
+        await cloudinary.uploader.destroy(publicId);
+      } else if (url.includes('/uploads/')) {
+        // Fallback for legacy local images
+        const fs = require('fs');
+        const path = require('path');
+        const filename = url.split('/').pop();
+        if (filename) {
+          const filepath = path.join(process.cwd(), process.env.UPLOAD_PATH || "uploads/", filename);
+          if (fs.existsSync(filepath)) {
+            fs.unlinkSync(filepath);
+          }
         }
       }
     } catch (err) {
       console.error("FILE_DELETE_ERROR:", err);
     }
-  });
+  }
 };
 
 // Helper to delete a file
-const deleteFile = (filepath) => {
-  if (fs.existsSync(filepath)) {
-    fs.unlinkSync(filepath);
+const deleteFile = async (url) => {
+  try {
+    const publicId = getPublicIdFromUrl(url);
+    if (publicId) {
+      await cloudinary.uploader.destroy(publicId);
+    } else if (url.includes('/uploads/')) {
+       // Fallback for legacy local images
+       const fs = require('fs');
+       const path = require('path');
+       const filename = url.split('/').pop();
+       if (filename) {
+         const filepath = path.join(process.cwd(), process.env.UPLOAD_PATH || "uploads/", filename);
+         if (fs.existsSync(filepath)) {
+           fs.unlinkSync(filepath);
+         }
+       }
+    }
+  } catch (err) {
+    console.error("FILE_DELETE_ERROR:", err);
   }
 };
 
 module.exports = { 
   uploadAvatar, 
   uploadProductImages, 
-  getFileUrl, 
   deleteFile, 
   deleteAllProductImages 
 };

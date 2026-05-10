@@ -4,7 +4,7 @@ const axios = require("axios");
 const nodemailer = require("nodemailer");
 const { sendTokenResponse } = require("../utils/token");
 const { AppError } = require("../middleware/errorHandler");
-const { getFileUrl, deleteFile } = require("../middleware/upload");
+const { deleteFile } = require("../middleware/upload");
 const path = require("path");
 
 // Helper to generate 6-digit OTP
@@ -13,7 +13,7 @@ const generateOTP = () => {
 };
 
 // Helper to send OTP via Email
-const sendOTP = async (email, otp, subject = "Verify your EduTrade Account") => {
+const sendOTP = async (email, otp, subject = "Verify your CampusKart Account") => {
   try {
     const transporter = nodemailer.createTransport({
       service: "gmail",
@@ -27,20 +27,20 @@ const sendOTP = async (email, otp, subject = "Verify your EduTrade Account") => 
     });
 
     const mailOptions = {
-      from: `"EduTrade Support" <${process.env.EMAIL_USER}>`,
+      from: `"CampusKart Support" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: subject,
       html: `
         <div style="background-color: #f8fafc; padding: 40px 20px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
           <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 24px; overflow: hidden; box-shadow: 0 10px 25px rgba(99, 102, 241, 0.1);">
             <div style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); padding: 40px; text-align: center;">
-              <div style="font-size: 32px; font-weight: 800; color: white; letter-spacing: -1px; margin-bottom: 8px;">EduTrade</div>
+              <div style="font-size: 32px; font-weight: 800; color: white; letter-spacing: -1px; margin-bottom: 8px;">CampusKart</div>
               <div style="color: rgba(255,255,255,0.8); font-size: 14px; font-weight: 600; text-transform: uppercase; tracking: 1px;">Secure Campus Marketplace</div>
             </div>
             <div style="padding: 40px;">
               <h1 style="font-size: 24px; font-weight: 700; color: #1e293b; margin-top: 0; margin-bottom: 16px;">Verify your identity</h1>
               <p style="color: #64748b; font-size: 16px; line-height: 24px; margin-bottom: 32px;">
-                Hello! Use the security code below to complete your verification process on EduTrade.
+                Hello! Use the security code below to complete your verification process on CampusKart.
               </p>
               <div style="background: #f1f5f9; border-radius: 16px; padding: 32px; text-align: center; margin-bottom: 32px;">
                 <div style="color: #64748b; font-size: 12px; font-weight: 700; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 1px;">Your Verification Code</div>
@@ -52,7 +52,7 @@ const sendOTP = async (email, otp, subject = "Verify your EduTrade Account") => 
             </div>
             <div style="background: #f8fafc; padding: 24px; text-align: center; border-top: 1px solid #e2e8f0;">
               <p style="color: #94a3b8; font-size: 12px; margin: 0;">
-                &copy; 2026 EduTrade. All rights reserved.
+                &copy; 2026 CampusKart. All rights reserved.
               </p>
             </div>
           </div>
@@ -104,7 +104,7 @@ const register = async (req, res, next) => {
       email,
       password,
       phone,
-      college: college || "EduTrade University",
+      college: college || "CampusKart University",
       department,
       year,
       otp,
@@ -250,14 +250,10 @@ const updateProfile = async (req, res, next) => {
       // Delete old avatar if exists
       const oldUser = await User.findById(req.user._id);
       if (oldUser.avatar) {
-        const oldPath = path.join(
-          process.cwd(),
-          process.env.UPLOAD_PATH || "uploads/",
-          path.basename(oldUser.avatar)
-        );
-        deleteFile(oldPath);
+        // Pass the URL directly to the new deleteFile helper
+        deleteFile(oldUser.avatar);
       }
-      updateData.avatar = getFileUrl(req, req.file.filename);
+      updateData.avatar = req.file.path;
     }
 
     if (Object.keys(updateData).length === 0) {
@@ -421,7 +417,7 @@ const verifyOTP = async (req, res, next) => {
     user.otpExpires = null;
     await user.save({ validateBeforeSave: false });
 
-    sendTokenResponse(user, 200, res, "Account verified successfully! Welcome to EduTrade 🎓");
+    sendTokenResponse(user, 200, res, "Account verified successfully! Welcome to CampusKart 🎓");
   } catch (error) {
     next(error);
   }
@@ -483,7 +479,7 @@ const forgotPassword = async (req, res, next) => {
     user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
     await user.save({ validateBeforeSave: false });
 
-    sendOTP(user.email, otp, "EduTrade - Password Reset Request");
+    sendOTP(user.email, otp, "CampusKart - Password Reset Request");
 
     res.status(200).json({
       success: true,

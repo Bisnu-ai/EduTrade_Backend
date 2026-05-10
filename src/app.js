@@ -49,7 +49,7 @@ app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 // Welcome route
 app.get("/", (req, res) => {
-  res.json({ success: true, message: "Welcome to EduTrade API 🎓", version: "1.0.0", status: "Healthy" });
+  res.json({ success: true, message: "Welcome to CampusKart API 🎓", version: "1.0.0", status: "Healthy" });
 });
 
 // Routes

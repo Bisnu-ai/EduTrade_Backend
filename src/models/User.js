@@ -43,7 +43,7 @@ const userSchema = new mongoose.Schema(
     },
     college: {
       type: String,
-      default: "EduTrade University",
+      default: "CampusKart University",
       trim: true,
     },
     department: {
