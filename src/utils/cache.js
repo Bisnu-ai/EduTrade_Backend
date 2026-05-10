@@ -1,7 +1,7 @@
 const NodeCache = require("node-cache");
 
 // Initialize cache with default TTL of 10 minutes and check period of 2 minutes
-const cache = new NodeCache({ stdTTL: 600, checkperiod: 120 });
+const cache = new NodeCache({ stdTTL: 600, checkperiod: 120, useClones: false });
 
 /**
  * Cache Utility functions
