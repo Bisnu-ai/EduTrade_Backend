@@ -13,68 +13,113 @@ const generateOTP = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
-// Helper to send OTP via Email
-const sendOTP = async (email, otp, subject = "Verify your CampusKart Account") => {
-  try {
-    const transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-      connectionTimeout: 10000, // 10 seconds to connect
-      greetingTimeout: 10000,
-      socketTimeout: 15000, // 15 seconds for socket
-    });
-
-    const mailOptions = {
-      from: `"CampusKart Support" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: subject,
-      html: `
-        <div style="background-color: #f8fafc; padding: 40px 20px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-          <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 24px; overflow: hidden; box-shadow: 0 10px 25px rgba(99, 102, 241, 0.1);">
-            <div style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); padding: 40px; text-align: center;">
-              <div style="font-size: 32px; font-weight: 800; color: white; letter-spacing: -1px; margin-bottom: 8px;">CampusKart</div>
-              <div style="color: rgba(255,255,255,0.8); font-size: 14px; font-weight: 600; text-transform: uppercase; tracking: 1px;">Secure Campus Marketplace</div>
-            </div>
-            <div style="padding: 40px;">
-              <h1 style="font-size: 24px; font-weight: 700; color: #1e293b; margin-top: 0; margin-bottom: 16px;">Verify your identity</h1>
-              <p style="color: #64748b; font-size: 16px; line-height: 24px; margin-bottom: 32px;">
-                Hello! Use the security code below to complete your verification process on CampusKart.
-              </p>
-              <div style="background: #f1f5f9; border-radius: 16px; padding: 32px; text-align: center; margin-bottom: 32px;">
-                <div style="color: #64748b; font-size: 12px; font-weight: 700; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 1px;">Your Verification Code</div>
-                <div style="font-size: 48px; font-weight: 800; color: #6366f1; letter-spacing: 10px; margin-left: 10px;">${otp}</div>
-              </div>
-              <p style="color: #ef4444; font-size: 13px; font-weight: 600; text-align: center; margin-bottom: 0;">
-                This code expires in 10 minutes. Do not share it with anyone.
-              </p>
-            </div>
-            <div style="background: #f8fafc; padding: 24px; text-align: center; border-top: 1px solid #e2e8f0;">
-              <p style="color: #94a3b8; font-size: 12px; margin: 0;">
-                &copy; 2026 CampusKart. All rights reserved.
-              </p>
-            </div>
-          </div>
+// HTML template for OTP emails
+const getOTPEmailHTML = (otp) => `
+  <div style="background-color: #f8fafc; padding: 40px 20px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+    <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 24px; overflow: hidden; box-shadow: 0 10px 25px rgba(99, 102, 241, 0.1);">
+      <div style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); padding: 40px; text-align: center;">
+        <div style="font-size: 32px; font-weight: 800; color: white; letter-spacing: -1px; margin-bottom: 8px;">CampusKart</div>
+        <div style="color: rgba(255,255,255,0.8); font-size: 14px; font-weight: 600; text-transform: uppercase; tracking: 1px;">Secure Campus Marketplace</div>
+      </div>
+      <div style="padding: 40px;">
+        <h1 style="font-size: 24px; font-weight: 700; color: #1e293b; margin-top: 0; margin-bottom: 16px;">Verify your identity</h1>
+        <p style="color: #64748b; font-size: 16px; line-height: 24px; margin-bottom: 32px;">
+          Hello! Use the security code below to complete your verification process on CampusKart.
+        </p>
+        <div style="background: #f1f5f9; border-radius: 16px; padding: 32px; text-align: center; margin-bottom: 32px;">
+          <div style="color: #64748b; font-size: 12px; font-weight: 700; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 1px;">Your Verification Code</div>
+          <div style="font-size: 48px; font-weight: 800; color: #6366f1; letter-spacing: 10px; margin-left: 10px;">${otp}</div>
         </div>
-      `,
-    };
+        <p style="color: #ef4444; font-size: 13px; font-weight: 600; text-align: center; margin-bottom: 0;">
+          This code expires in 10 minutes. Do not share it with anyone.
+        </p>
+      </div>
+      <div style="background: #f8fafc; padding: 24px; text-align: center; border-top: 1px solid #e2e8f0;">
+        <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+          &copy; 2026 CampusKart. All rights reserved.
+        </p>
+      </div>
+    </div>
+  </div>
+`;
 
-    await transporter.sendMail(mailOptions);
-    console.log(`\n📧 [EMAIL SENT] To: ${email} | Subject: ${subject}`);
-    return true;
-  } catch (error) {
-    console.error(`\n❌ [EMAIL FAILED] Error:`, error.message);
-    console.log(`\n************************************************`);
-    console.log(`🔥 [EMERGENCY OTP LOG]`);
-    console.log(`📧 User: ${email}`);
-    console.log(`🔢 OTP: ${otp}`);
-    console.log(`************************************************\n`);
-    return false;
+// Method 1: Send email via Brevo HTTP API (works on Render/cloud - no SMTP ports needed)
+const sendViaBrevo = async (email, subject, htmlContent) => {
+  const response = await axios.post(
+    "https://api.brevo.com/v3/smtp/email",
+    {
+      sender: { name: "CampusKart Support", email: process.env.BREVO_SENDER_EMAIL || process.env.EMAIL_USER },
+      to: [{ email }],
+      subject,
+      htmlContent,
+    },
+    {
+      headers: {
+        "api-key": process.env.BREVO_API_KEY,
+        "Content-Type": "application/json",
+      },
+      timeout: 15000,
+    }
+  );
+  return response.data;
+};
+
+// Method 2: Send email via Gmail SMTP (works locally, blocked on Render free tier)
+const sendViaGmailSMTP = async (email, subject, htmlContent) => {
+  const transporter = nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 587,
+    secure: false,
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
+  });
+
+  await transporter.sendMail({
+    from: `"CampusKart Support" <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject,
+    html: htmlContent,
+  });
+};
+
+// Helper to send OTP via Email (tries Brevo API first, then Gmail SMTP fallback)
+const sendOTP = async (email, otp, subject = "Verify your CampusKart Account") => {
+  const htmlContent = getOTPEmailHTML(otp);
+
+  // Try Method 1: Brevo HTTP API (production)
+  if (process.env.BREVO_API_KEY) {
+    try {
+      await sendViaBrevo(email, subject, htmlContent);
+      console.log(`\n📧 [EMAIL SENT via Brevo] To: ${email} | Subject: ${subject}`);
+      return true;
+    } catch (error) {
+      console.error(`\n❌ [BREVO FAILED] Error:`, error.response?.data || error.message);
+    }
   }
+
+  // Try Method 2: Gmail SMTP (local dev fallback)
+  if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+    try {
+      await sendViaGmailSMTP(email, subject, htmlContent);
+      console.log(`\n📧 [EMAIL SENT via Gmail SMTP] To: ${email} | Subject: ${subject}`);
+      return true;
+    } catch (error) {
+      console.error(`\n❌ [GMAIL SMTP FAILED] Error:`, error.message);
+    }
+  }
+
+  // Both methods failed
+  console.log(`\n************************************************`);
+  console.log(`🔥 [EMERGENCY OTP LOG - ALL EMAIL METHODS FAILED]`);
+  console.log(`📧 User: ${email}`);
+  console.log(`🔢 OTP: ${otp}`);
+  console.log(`************************************************\n`);
+  return false;
 };
 
 // POST /api/auth/register
