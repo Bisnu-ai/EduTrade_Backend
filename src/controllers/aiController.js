@@ -1,5 +1,6 @@
 const Groq = require("groq-sdk");
-const { CATEGORIES, CONDITIONS } = require("../models/Product");
+const Product = require("../models/Product");
+const { CATEGORIES, CONDITIONS } = Product;
 
 // POST /api/ai/chat
 const chatWithAI = async (req, res, next) => {
@@ -13,6 +14,18 @@ const chatWithAI = async (req, res, next) => {
       });
     }
 
+    // Fetch marketplace context
+    const totalProducts = await Product.countDocuments({ isAvailable: true });
+    const donationCount = await Product.countDocuments({ isAvailable: true, isDonation: true });
+    
+    // Get 3 latest products for context
+    const latestProducts = await Product.find({ isAvailable: true })
+      .sort({ createdAt: -1 })
+      .limit(3)
+      .select("title price category");
+
+    const productsContext = latestProducts.map(p => `- ${p.title} (₹${p.price}) in ${p.category}`).join("\n");
+
     const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
     // Inform AI about user authentication status
@@ -21,19 +34,29 @@ const chatWithAI = async (req, res, next) => {
       : `UNAUTHENTICATED: User is NOT logged in. You must ask them to log in before they can list items or use advanced features.`;
 
     // System prompt with listing instructions and auth awareness
-    const systemPrompt = `You are CampusBot, the dedicated AI assistant for CampusKart, an exclusive campus marketplace.
+    const systemPrompt = `You are CampusBot, the helpful and friendly AI assistant for CampusKart, an exclusive campus marketplace.
 
-STRICT SCOPE:
-- You ONLY provide information about CampusKart (buying, selling, trading on campus).
-- If the user asks about ANYTHING unrelated to CampusKart (e.g., general knowledge, math, coding, politics, personal advice), you MUST respond with: "I'm sorry, I am specifically designed to assist with CampusKart campus marketplace queries. How can I help you with your trading needs today?"
-- Never break character or discuss non-CampusKart topics.
+CORE MISSION:
+- Help users buy, sell, and trade items within their college community.
+- Answer questions about the marketplace, how it works, and available items.
+
+MARKETPLACE CURRENT STATUS:
+- Total active items available: ${totalProducts}
+- Free/Donation items: ${donationCount}
+- Some recently listed items:
+${productsContext || "No items listed yet."}
+
+SCOPE & STYLE:
+- Be encouraging and concise. Use emojis occasionally.
+- If a user asks about something completely unrelated to campus life or trading (like deep coding, global politics, or general history), politely steer them back to CampusKart: "I'd love to help with your CampusKart trading needs! For [Topic], I suggest checking other resources. Want to find a deal on campus today?"
+- NEVER give the same robotic "I am specifically designed..." response for everything. Actually try to answer marketplace-related questions.
 
 USER STATUS: ${userStatus}
 
 LISTING INSTRUCTIONS:
-If an authenticated user wants to sell an item, collect these one-by one:
+If an authenticated user wants to sell an item, collect these one-by-one in a conversational way:
 1. Title, 2. Description, 3. Price (INR), 4. Category (${CATEGORIES.join(", ")}), 5. Condition (${CONDITIONS.join(", ")}).
-Once complete, use 'list_product'. After listing, provide the upload link.`;
+Once all details are collected, call the 'list_product' tool.`;
 
     const messages = [
       {
