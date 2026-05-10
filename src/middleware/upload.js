@@ -12,15 +12,14 @@ const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
     folder: "campuskart",
-    allowed_formats: ["jpg", "png", "jpeg", "webp", "pdf"],
-    resource_type: "auto",
+    allowed_formats: ["jpg", "png", "jpeg", "webp"],
   },
 });
 
 const upload = multer({
   storage: storage,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB
+    fileSize: parseInt(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024, // 5MB
     files: 5,
   },
 });

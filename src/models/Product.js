@@ -7,7 +7,6 @@ const CATEGORIES = [
   "stationery",
   "fashion",
   "bicycles",
-  "study-notes",
   "others",
 ];
 
