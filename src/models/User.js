@@ -71,7 +71,7 @@ const userSchema = new mongoose.Schema(
     ],
     isVerified: {
       type: Boolean,
-      default: true,
+      default: false,
     },
     otp: {
       type: String,

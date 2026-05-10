@@ -16,17 +16,13 @@ const generateOTP = () => {
 const sendOTP = async (email, otp, subject = "Verify your CampusKart Account") => {
   try {
     const transporter = nodemailer.createTransport({
-      service: "gmail",
-      pool: true, // Use SMTP pooling for better performance
-      maxConnections: 5,
-      maxMessages: 100,
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
       },
-      tls: {
-        rejectUnauthorized: false
-      }
     });
 
     const mailOptions = {
@@ -114,16 +110,24 @@ const register = async (req, res, next) => {
       year,
       otp,
       otpExpires,
-      isVerified: true, 
+      isVerified: false, 
       role, // Set role here
     });
 
-    // Send welcome email in background (don't await)
-    sendOTP(email, otp, "Welcome to CampusKart! 🎓");
+    const emailSent = await sendOTP(email, otp);
+    
+    if (!emailSent) {
+      // If email failed to send, delete the newly created user to prevent hanging unverified accounts
+      await User.deleteOne({ _id: user._id });
+      return res.status(500).json({
+        success: false,
+        message: "Failed to send OTP email. Please check server email configuration or try again later.",
+      });
+    }
 
     res.status(201).json({
       success: true,
-      message: "Registration successful! Welcome to CampusKart 🎓",
+      message: "Registration successful! Please verify the OTP sent to your email. 📧",
       data: { 
         userId: user._id,
         email: user.email 
@@ -158,8 +162,24 @@ const login = async (req, res, next) => {
     }
 
     if (!user.isVerified) {
-      user.isVerified = true;
+      // If not verified, send a new OTP and tell them to verify
+      const otp = generateOTP();
+      user.otp = otp;
+      user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
       await user.save({ validateBeforeSave: false });
+      const emailSent = await sendOTP(user.email, otp);
+      if (!emailSent) {
+        return res.status(500).json({
+          success: false,
+          message: "Failed to send verification email.",
+        });
+      }
+
+      return res.status(403).json({
+        success: false,
+        message: "Your account is not verified. A new OTP has been sent to your email. 📧",
+        data: { userId: user._id, email: user.email }
+      });
     }
 
     if (!user.isActive) {
