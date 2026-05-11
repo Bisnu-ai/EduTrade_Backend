@@ -409,6 +409,82 @@ const getCategories = async (req, res) => {
   res.json({ success: true, data: { categories: CATEGORIES, conditions: CONDITIONS } });
 };
 
+// GET /api/products/seller-dashboard - Seller's analytics
+const getSellerDashboard = async (req, res, next) => {
+  try {
+    const sellerId = req.user._id;
+
+    // Get all products by this seller
+    const products = await Product.find({ seller: sellerId })
+      .select("title category views wishlistedBy isAvailable price createdAt images");
+
+    // Aggregate totals
+    const totalViews = products.reduce((sum, p) => sum + (p.views || 0), 0);
+    const totalWishlists = products.reduce((sum, p) => sum + (p.wishlistedBy?.length || 0), 0);
+    const activeListings = products.filter(p => p.isAvailable).length;
+    const soldItems = products.filter(p => !p.isAvailable).length;
+
+    // Messages received as seller
+    const chats = await Chat.find({ seller: sellerId });
+    const totalMessages = chats.reduce((sum, c) => sum + (c.messages?.length || 0), 0);
+    const totalEnquiries = chats.length;
+
+    // Per-product stats for bar chart (top 8)
+    const productStats = products
+      .sort((a, b) => (b.views || 0) - (a.views || 0))
+      .slice(0, 8)
+      .map(p => ({
+        name: p.title.length > 18 ? p.title.substring(0, 18) + "…" : p.title,
+        fullName: p.title,
+        views: p.views || 0,
+        wishlist: p.wishlistedBy?.length || 0,
+        image: p.images?.[0] || null,
+        isAvailable: p.isAvailable,
+        price: p.price,
+      }));
+
+    // Category breakdown for pie chart
+    const categoryMap = {};
+    products.forEach(p => {
+      const cat = p.category || "Others";
+      categoryMap[cat] = (categoryMap[cat] || 0) + 1;
+    });
+    const categoryBreakdown = Object.entries(categoryMap).map(([name, value]) => ({ name, value }));
+
+    // Monthly listing trend (last 6 months)
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    const recentProducts = await Product.find({
+      seller: sellerId,
+      createdAt: { $gte: sixMonthsAgo }
+    }).select("createdAt");
+
+    const monthlyTrend = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - i);
+      const month = d.toLocaleString("default", { month: "short" });
+      const count = recentProducts.filter(p => {
+        const pd = new Date(p.createdAt);
+        return pd.getMonth() === d.getMonth() && pd.getFullYear() === d.getFullYear();
+      }).length;
+      monthlyTrend.push({ month, listings: count });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        overview: { totalViews, totalWishlists, totalMessages, totalEnquiries, activeListings, soldItems },
+        productStats,
+        categoryBreakdown,
+        monthlyTrend,
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // GET /api/products/public-stats - Get real-time stats for Hero section
 const getPublicStats = async (req, res, next) => {
   try {
@@ -460,5 +536,6 @@ module.exports = {
   getMyListings,
   markAsSold,
   getCategories,
+  getSellerDashboard,
   getPublicStats,
 };

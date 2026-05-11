@@ -11,6 +11,7 @@ const {
   getMyListings,
   markAsSold,
   getCategories,
+  getSellerDashboard,
   getPublicStats,
 } = require("../controllers/productController");
 const { protect, optionalAuth } = require("../middleware/auth");
@@ -24,6 +25,7 @@ router.get("/public-stats", getPublicStats);
 // Protected routes (Static paths first)
 router.get("/my-listings", protect, getMyListings);
 router.get("/wishlist", protect, getWishlist);
+router.get("/seller-dashboard", protect, getSellerDashboard);
 
 // Dynamic ID routes (Last)
 router.get("/:id", optionalAuth, getProduct);
