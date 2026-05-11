@@ -120,6 +120,28 @@ io.on("connection", (socket) => {
     }
   });
 
+  // ───── Video/Audio Call Signaling ─────
+  socket.on("startCall", (data) => {
+    // data: { callerId, callerName, recipientId, type: 'video' | 'audio', roomId }
+    console.log(`📞 Call started from ${data.callerName} to ${data.recipientId}`);
+    socket.to(data.recipientId).emit("incomingCall", data);
+  });
+
+  socket.on("acceptCall", (data) => {
+    // data: { callerId, roomId }
+    socket.to(data.callerId).emit("callAccepted", data);
+  });
+
+  socket.on("rejectCall", (data) => {
+    // data: { callerId }
+    socket.to(data.callerId).emit("callRejected");
+  });
+
+  socket.on("endCall", (data) => {
+    // data: { recipientId }
+    socket.to(data.recipientId).emit("callEnded");
+  });
+
   socket.on("disconnect", () => {
     console.log("❌ Client disconnected:", socket.id);
   });
