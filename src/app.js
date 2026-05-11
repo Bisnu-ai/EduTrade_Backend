@@ -146,6 +146,14 @@ io.on("connection", (socket) => {
     socket.to(data.recipientId).emit("callEnded");
   });
 
+  socket.on("typing", (data) => {
+    // data: { recipientId, senderId, productId }
+    socket.to(data.recipientId).emit("userTyping", { 
+      senderId: data.senderId, 
+      productId: data.productId 
+    });
+  });
+
   socket.on("disconnect", () => {
     console.log("❌ Client disconnected:", socket.id);
   });
