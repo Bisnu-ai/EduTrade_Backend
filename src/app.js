@@ -7,12 +7,16 @@ const path = require("path");
 const dotenv = require("dotenv");
 const connectDB = require("./config/db");
 const { errorHandler, notFound } = require("./middleware/errorHandler");
+const initProductCleanup = require("./utils/productCleanup");
 
 // Load env vars
 dotenv.config();
 
 // Connect to database
 connectDB();
+
+// Initialize scheduled tasks
+initProductCleanup();
 
 const app = express();
 
