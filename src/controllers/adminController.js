@@ -79,8 +79,15 @@ const deleteUser = async (req, res, next) => {
 // ── All Products ──────────────────────────────────────────────────────────────
 const getAllProducts = async (req, res, next) => {
   try {
-    const { page = 1, limit = 20, search = "" } = req.query;
-    const query = search ? { title: { $regex: search, $options: "i" } } : {};
+    const { page = 1, limit = 20, search = "", filter = "" } = req.query;
+    let query = search ? { title: { $regex: search, $options: "i" } } : {};
+
+    if (filter === "old") {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      query.updatedAt = { $lte: thirtyDaysAgo };
+      query.isAvailable = true;
+    }
 
     const products = await Product.find(query)
       .populate("seller", "name email college")
@@ -156,6 +163,29 @@ const demoteAdmin = async (req, res, next) => {
   } catch (error) { next(error); }
 };
 
+// ── Delete All Old Products ────────────────────────────────────────────────────
+const deleteOldProducts = async (req, res, next) => {
+  try {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const result = await Product.deleteMany({
+      updatedAt: { $lte: thirtyDaysAgo },
+      isAvailable: true
+    });
+
+    // Invalidate cache
+    cache.delByPrefix("products_list_");
+    cache.flush();
+
+    res.json({ 
+      success: true, 
+      message: `${result.deletedCount} old products deleted successfully`,
+      count: result.deletedCount
+    });
+  } catch (error) { next(error); }
+};
+
 module.exports = { 
   getStats, 
   getAllUsers, 
@@ -163,6 +193,7 @@ module.exports = {
   deleteUser, 
   getAllProducts, 
   deleteProduct, 
+  deleteOldProducts,
   makeAdmin,
   demoteAdmin 
 };
