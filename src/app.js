@@ -40,7 +40,10 @@ app.use(cors({
 }));
 
 // Set security headers
-app.use(helmet({ crossOriginResourcePolicy: false }));
+app.use(helmet({ 
+  crossOriginResourcePolicy: false,
+  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" }
+}));
 
 // Dev logging middleware
 if (process.env.NODE_ENV === "development") {
